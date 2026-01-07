@@ -1,44 +1,35 @@
 # 📘 Development Policies
 
-This folder contains shared development policies used across all local .NET and source controlled projects. These policies ensure consistent formatting, coding standards, and dependency management across all repositories.
+To ensure all developers use the same rules, we maintain a single source of truth under git source control management.  This folder contains shared development policies used across all local .NET and source controlled projects. These policies ensure consistent formatting, coding standards, and dependency management across all repositories.
 
-## 1. Global .editorconfig Setup
+## Quick Reference
 
-**Purpose**
+| File | Description |
+|------|-------------|
+| `.editorconfig` | Defines consistent coding styles across editors and IDEs (Visual Studio, VS Code, Rider, etc.).|
+| `.copilot-instructions.md` | Provides consistent Copilot instructions for AI-assisted development |
+| `CLAUDE.md` | Provides consistent Claude AI instructions for AI-assisted development |
+| `Directory.Packages.Camelot.props` | Manages NuGet package versions for Camelot framework projects |
+| `Directory.Packages.Evolution.props` | Manages NuGet package versions for Evolution framework projects |
 
-`.editorconfig` defines consistent coding styles across editors and IDEs (Visual Studio, VS Code, Rider, etc.).  To ensure all development uses the same rules, we maintain a single authoritative `.editorconfig` file in `C:\BTR\Policies`.
+## Creating the Symbolic Links (Symlink) to Policy Configuration Files
 
-Because `.editorconfig` files are only discovered by walking upward from the project directory, we expose this file globally by creating a symlink at the root of all development:
-
-> C:\BTR\.editorconfig → C:\BTR\Policies\.editorconfig
-
-This ensures every project under C:\BTR automatically picks up the shared rules.
-
-### Creating the Symlink (One Time Setup per Developer)
+Because these configuration files are either hard coded locations or only discovered by walking upward from the project directory, we expose this file globally by creating a symlink at appropriate locations.  This ensures every BTR/KAT project by default picks up the shared rules.
 
 Run PowerShell as Administrator:
 
+```powershell
+New-Item -ItemType SymbolicLink -Path "C:\BTR\.editorconfig" -Target "C:\BTR\Policies\.editorconfig" -Force
+New-Item -ItemType SymbolicLink -Path "C:\BTR\.copilot-instructions.md" -Target "C:\BTR\Policies\.copilot-instructions.md" -Force
+New-Item -ItemType Directory -Path "~\.claude" -Force
+New-Item -ItemType SymbolicLink -Path "~\.claude\CLAUDE.md" -Target "C:\BTR\Policies\CLAUDE.md" -Force
 ```
-New-Item -ItemType SymbolicLink `
-  -Path "C:\BTR\.editorconfig" `
-  -Target "C:\BTR\Policies\.editorconfig"
-```
 
-**Verification**
+Edit only the files in `C:\BTR\Policies\`.  All projects immediately inherit the changes.  No need to update or copy files into individual repos.
 
-After creating the link, `C:\BTR\.editorconfig` should appear as a file.  Opening it should show the contents of `C:\BTR\Policies\.editorconfig`. Any project under `C:\BTR\...` will automatically use these settings.
+## Global Package Management for .NET
 
-### Updating the Global `.editorconfig`
-
-Edit only the file in `C:\BTR\Policies\.editorconfig`.  All projects immediately inherit the changes.  No need to update or copy files into individual repos.
-
-## 2. Global Package Management for .NET
-
-**Purpose**
-
-We maintain consistent NuGet package versions across all repositories by using shared `Directory.Packages.props` files stored in `C:\BTR\Policies`.
-
-Each framework's repository imports appropriate file (i.e. `Directory.Packages.Camelot.props`) so that all projects use the same dependency versions by default.
+Each framework (Evolution, Camelot, etc.) has its own package file (i.e. `Directory.Packages.Camelot.props`) so that the same nuget package versions are used by default (which is KAT standard policy).
 
 The format of global package management is something like:
 
@@ -101,17 +92,3 @@ A project can override both global and repository level versions by specifying a
 ```
 
 This is the highest precedence override and should be used sparingly.
-
-## Summary
-
-**Global `.editorconfig`**
-- Authoritative file lives in `C:\BTR\Policies`
-- Developers create a symlink at `C:\BTR\.editorconfig`
-- Automatically applies to all projects under `C:\BTR`
-
-**Global Package Management**
-- Shared `Directory.Packages[framework].props` lives in `C:\BTR\Policies`
-- Each repository imports it via `<Import/>` statement in .csproj
-- Overrides allowed:
-	- Repo level `Directory.Packages.props`
-	- Project level version in .csproj
