@@ -20,7 +20,7 @@ Run PowerShell as Administrator:
 
 ```powershell
 New-Item -ItemType SymbolicLink -Path "C:\BTR\.editorconfig" -Target "C:\BTR\Policies\.editorconfig" -Force
-New-Item -ItemType SymbolicLink -Path "C:\Users\terry.aney~\AppData\Roaming\Code\User\prompts\copilot-instructions.md" -Target "C:\BTR\Policies\.copilot-instructions.md" -Force
+New-Item -ItemType SymbolicLink -Path "C:\Users\terry.aney\AppData\Roaming\Code\User\prompts\copilot-instructions.md" -Target "C:\BTR\Policies\.copilot-instructions.md" -Force
 New-Item -ItemType Directory -Path "~\.claude" -Force
 New-Item -ItemType SymbolicLink -Path "~\.claude\CLAUDE.md" -Target "C:\BTR\Policies\CLAUDE.md" -Force
 ```
