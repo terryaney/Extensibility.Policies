@@ -43,4 +43,3 @@ applyTo: **
 - Don't add extra features or "enhancements" I didn't ask for
 - Don't over-engineer solutions
 - Don't explain basic C# concepts unless I specifically ask
-
