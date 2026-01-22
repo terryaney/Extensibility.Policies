@@ -2,27 +2,51 @@
 
 To ensure all developers use the same rules, we maintain a single source of truth under git source control management.  This folder contains shared development policies used across all local .NET and source controlled projects. These policies ensure consistent formatting, coding standards, and dependency management across all repositories.
 
+## Installation
+
+1. Clone repository to your local machine:
+	`git clone https://tfs.acsgs.com/tfs/PDSI/HRS2/_git/HRS%20BTR%20-%20extensibility.policies C:\BTR\Policies`
+1. Follow [instructions](#creating-the-symbolic-links-symlink-to-policy-configuration-files) below to create symbolic links to configuration files.
+
+To update policy files, simply run `git pull` inside the `C:\BTR\Policies` folder.
+
 ## Quick Reference
 
 | File | Description |
 |------|-------------|
 | `.editorconfig` | Defines consistent coding styles across editors and IDEs (Visual Studio, VS Code, Rider, etc.).|
-| `.copilot-instructions.md` | Provides consistent Copilot instructions for AI-assisted development |
-| `CLAUDE.md` | Provides consistent Claude AI instructions for AI-assisted development |
 | `Directory.Packages.Camelot.props` | Manages NuGet package versions for Camelot framework projects |
 | `Directory.Packages.Evolution.props` | Manages NuGet package versions for Evolution framework projects |
+| `/Copilot` | Provides consistent Copilot instructions and prompts for AI-assisted development in GitHub Copilot chats. |
+| `/Claude` | Provides consistent Claude instructions and prompts for AI-assisted development in Claude Code chats. |
 
 ## Creating the Symbolic Links (Symlink) to Policy Configuration Files
 
 Because these configuration files are either hard coded locations or only discovered by walking upward from the project directory, we expose this file globally by creating a symlink at appropriate locations.  This ensures every BTR/KAT project by default picks up the shared rules.
 
-Run PowerShell as Administrator:
+Copy the following snippet and paste into Terminal/PowerShell running as Administrator:
 
 ```powershell
+New-Item -ItemType Directory -Path "C:\BTR" -Force | Out-Null
 New-Item -ItemType SymbolicLink -Path "C:\BTR\.editorconfig" -Target "C:\BTR\Policies\.editorconfig" -Force
-New-Item -ItemType SymbolicLink -Path "~\AppData\Roaming\Code\User\prompts\copilot-instructions.md" -Target "C:\BTR\Policies\.copilot-instructions.md" -Force
-New-Item -ItemType Directory -Path "~\.claude" -Force
-New-Item -ItemType SymbolicLink -Path "~\.claude\CLAUDE.md" -Target "C:\BTR\Policies\CLAUDE.md" -Force
+
+# Create Claude symlinks for all files
+Get-ChildItem -Path "C:\BTR\Policies\Claude" -Recurse -File | ForEach-Object {
+    $relativePath = $_.FullName.Substring("C:\BTR\Policies\Claude".Length).TrimStart("\")
+    $symlinkPath = Join-Path "~\.claude" $relativePath
+    $symlinkDir = Split-Path $symlinkPath
+    New-Item -ItemType Directory -Path $symlinkDir -Force | Out-Null
+    New-Item -ItemType SymbolicLink -Path $symlinkPath -Target $_.FullName -Force
+}
+
+# Create Copilot symlinks for all files
+Get-ChildItem -Path "C:\BTR\Policies\Copilot" -Recurse -File | ForEach-Object {
+    $relativePath = $_.FullName.Substring("C:\BTR\Policies\Copilot".Length).TrimStart("\")
+    $symlinkPath = Join-Path "~\AppData\Roaming\Code\User\prompts" $relativePath
+    $symlinkDir = Split-Path $symlinkPath
+    New-Item -ItemType Directory -Path $symlinkDir -Force | Out-Null
+    New-Item -ItemType SymbolicLink -Path $symlinkPath -Target $_.FullName -Force
+}
 ```
 
 Edit only the files in `C:\BTR\Policies\`.  All projects immediately inherit the changes.  No need to update or copy files into individual repos.
