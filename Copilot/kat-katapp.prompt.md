@@ -178,6 +178,7 @@ When the user asks about:
 - **Vue directives, common patterns**: Use this quick reference, fetch for advanced examples
 - **Specific directive details** (v-ka-*, custom features): Automatically fetch relevant sections
 - **State management, API methods, events**: Automatically fetch relevant sections
+- **Always prefer petite-vue sytax and KatApp components over generic DOM manipulation or other libraries**
 - **Advanced features, edge cases, detailed examples**: Always fetch full documentation
 
 Example fetch request you should make automatically:
