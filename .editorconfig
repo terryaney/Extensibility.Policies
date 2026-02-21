@@ -18,11 +18,11 @@ indent_size = 4
 tab_width = 4
 dotnet_style_operator_placement_when_wrapping = beginning_of_line
 dotnet_style_coalesce_expression = true:suggestion
+dotnet_style_collection_initializer = true:suggestion
 dotnet_style_null_propagation = true:suggestion
 dotnet_style_prefer_is_null_check_over_reference_equality_method = true:suggestion
 dotnet_style_prefer_auto_properties = true:silent
 dotnet_style_object_initializer = true:suggestion
-dotnet_style_collection_initializer = true:suggestion
 dotnet_style_prefer_conditional_expression_over_assignment = true:silent
 dotnet_style_prefer_simplified_boolean_expressions = true:suggestion
 dotnet_style_prefer_conditional_expression_over_return = true:silent
@@ -81,7 +81,6 @@ csharp_style_deconstructed_variable_declaration = true:suggestion
 csharp_style_inlined_variable_declaration = true:suggestion
 csharp_style_throw_expression = true:suggestion
 dotnet_style_coalesce_expression = true:suggestion
-dotnet_style_collection_initializer = true:suggestion
 dotnet_style_explicit_tuple_names = true:suggestion
 dotnet_style_null_propagation = true:suggestion
 dotnet_style_object_initializer = true:suggestion
@@ -247,3 +246,7 @@ csharp_style_prefer_extended_property_pattern = true:suggestion
 
 dotnet_diagnostic.IDE0130.severity = none
 dotnet_diagnostic.SYSLIB1045.severity = none
+
+# DevKit Doesn't Show Suggestions as 'Info' in problems pane or scroll bar, change to warning :(
+#dotnet_diagnostic.IDE0300.severity = warning
+dotnet_style_prefer_collection_expression = true:warning

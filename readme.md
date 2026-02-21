@@ -63,10 +63,32 @@ Get-ChildItem -Path "C:\BTR\Policies\Copilot" -Recurse -File | ForEach-Object {
     $symlinkDir = Split-Path $symlinkPath
     New-Item -ItemType Directory -Path $symlinkDir -Force | Out-Null
     New-Item -ItemType SymbolicLink -Path $symlinkPath -Target $_.FullName -Force
+
+	# Location for CLI Copilot
+	if ($_.Name -eq "copilot-instructions.md") {
+		$symlinkPath = Join-Path "~\.copilot" $relativePath
+		$symlinkDir = Split-Path $symlinkPath
+		New-Item -ItemType Directory -Path $symlinkDir -Force | Out-Null
+		New-Item -ItemType SymbolicLink -Path $symlinkPath -Target $_.FullName -Force
+	}
+	else {
+		# For other files, also create a symlink in the .copilot directory for CLI use
+		$symlinkPath = Join-Path "~\.copilot\agents" $relativePath
+		$symlinkDir = Split-Path $symlinkPath
+		New-Item -ItemType Directory -Path $symlinkDir -Force | Out-Null
+		New-Item -ItemType SymbolicLink -Path $symlinkPath -Target $_.FullName -Force
+	}
 }
 ```
 
 Edit only the files in `C:\BTR\Policies\`.  All projects immediately inherit the changes.  No need to update or copy files into individual repos.
+
+## Copilot Notes
+
+Ultralight Orchestration (Orchestrator) - Started from [Holland Gist](https://gist.github.com/burkeholland/0e68481f96e94bbb98134fa6efd00436)
+	- Updated Coder from Claude Opus 4.6 (copilot) to GPT-5.3-Codex (copilot) from [Montemagno](https://x.com/jamesmontemagno/status/2023941950815302139?s=52) - want to see his agent files still.  Also one comment was 'single-pass full implementation', should I try to put that in planner/orchestrator?
+	- Updated Orchestrator from Claude Sonnet 4.5 (copilot) to Claude Sonnet 4.6 (copilot) after release of 4.6 and all the hype.
+	- Updated Planner from GPT-5.2 (copilot) to Claude Sonnet 4.6 (copilot) after release of 4.6 and all the hype.
 
 ## Global Package Management for .NET
 
