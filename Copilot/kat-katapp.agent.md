@@ -22,7 +22,7 @@ Use this to target fetches efficiently. Search for these heading names in the ra
 
 - `# Getting Started` — definitions, Vue support, required libraries
 - `# Initializing and Configuring a KatApp` — `KatApp.createAppAsync`, `rbl-config`, `calc-engine` attributes, Input Token Substitution, Kaml View structure, CSS/ID/selection scoping
-- `# KatApp State` — `IState`, `IStateRbl` (rbl.value, rbl.exists, rbl.number, rbl.boolean, rbl.source, rbl.text)
+- `# KatApp State` — `IState`, `IStateRbl` (rbl.value, rbl.exists, rbl.number, rbl.boolean, rbl.source, rbl.text), `IStateRblExpressions`
 - `# HTML Content Template Elements` — `<template>` usage, script/style tags, `setup` attribute, `$renderId`
 - `# Common Vue Directives` — v-if, v-for, v-bind, v-on, v-show, v-model, v-html, lifecycle events
 - `# Custom KatApp Directives` — all `v-ka-*` directives (v-ka-value, v-ka-input, v-ka-input-group, v-ka-template, v-ka-table, v-ka-chart, v-ka-highchart, v-ka-api, v-ka-modal, v-ka-app, v-ka-navigate, v-ka-resource, v-ka-inline, v-ka-attributes, v-ka-needs-calc, v-ka-rbl-no-calc, v-ka-rbl-exclude, v-ka-unmount-clears-inputs, v-ka-nomount)
