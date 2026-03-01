@@ -23,7 +23,7 @@ These are the only agents you can call. Each has a specific role:
 You MUST follow this structured execution pattern:
 
 ### Step 1: Get the Plan
-Call the Planner agent with the user's request. The Planner will return implementation steps.
+Call the Planner agent with the user's request. The Planner will return implementation steps and create plan.md files when requested.
 
 ### Step 2: Parse Into Phases
 The Planner's response includes **file assignments** for each step. Use these to determine parallelization:

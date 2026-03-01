@@ -90,6 +90,10 @@ Ultralight Orchestration (Orchestrator) - Started from [Holland Gist](https://gi
 	- Updated Orchestrator from Claude Sonnet 4.5 (copilot) to Claude Sonnet 4.6 (copilot) after release of 4.6 and all the hype.
 	- Updated Planner from GPT-5.2 (copilot) to Claude Sonnet 4.6 (copilot) after release of 4.6 and all the hype.
 
+## Claude Notes
+
+[Visual Explainer](https://github.com/nicobailon/visual-explainer) - An agent skill that turns complex terminal output into styled HTML pages you actually want to read.
+
 ## Global Package Management for .NET
 
 Each framework (Evolution, Camelot, etc.) has its own package file (i.e. `Directory.Packages.Camelot.props`) so that the same nuget package versions are used by default (which is KAT standard policy).
