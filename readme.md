@@ -25,61 +25,13 @@ To update policy files, simply run `git pull` inside the `C:\BTR\Policies` folde
 
 Because these configuration files are either hard coded locations or only discovered by walking upward from the project directory, we expose this file globally by creating a symlink at appropriate locations.  This ensures every BTR/KAT project by default picks up the shared rules.
 
-Copy the following snippet and paste into Terminal/PowerShell running as Administrator:
+Copy the following snippet and paste into Terminal/PowerShell:
 
 ```powershell
-New-Item -ItemType Directory -Path "C:\BTR" -Force | Out-Null
-New-Item -ItemType SymbolicLink -Path "C:\BTR\.editorconfig" -Target "C:\BTR\Policies\.editorconfig" -Force
-
-# Create Terminal symlinks for all files
-$wtPackage = Get-AppxPackage -Name "Microsoft.WindowsTerminal"
-if ($wtPackage) {
-    $wtLocalState = Join-Path $env:LOCALAPPDATA "Packages\$($wtPackage.PackageFamilyName)\LocalState"
-    # Use $wtLocalState in your symlink path
-	Get-ChildItem -Path "C:\BTR\Policies\Terminal" -Recurse -File | ForEach-Object {
-		$relativePath = $_.FullName.Substring("C:\BTR\Policies\Terminal".Length).TrimStart("\")
-		$symlinkPath = Join-Path $wtLocalState $relativePath
-		$symlinkDir = Split-Path $symlinkPath
-		New-Item -ItemType Directory -Path $symlinkDir -Force | Out-Null
-		New-Item -ItemType SymbolicLink -Path $symlinkPath -Target $_.FullName -Force
-	}
-} else {
-    Write-Warning "Windows Terminal not found. Skipping Terminal symlinks."
-}
-
-# Create Claude symlinks for all files
-Get-ChildItem -Path "C:\BTR\Policies\Claude" -Recurse -File | ForEach-Object {
-    $relativePath = $_.FullName.Substring("C:\BTR\Policies\Claude".Length).TrimStart("\")
-    $symlinkPath = Join-Path "~\.claude" $relativePath
-    $symlinkDir = Split-Path $symlinkPath
-    New-Item -ItemType Directory -Path $symlinkDir -Force | Out-Null
-    New-Item -ItemType SymbolicLink -Path $symlinkPath -Target $_.FullName -Force
-}
-
-# Create Copilot symlinks for all files
-Get-ChildItem -Path "C:\BTR\Policies\Copilot" -Recurse -File | ForEach-Object {
-    $relativePath = $_.FullName.Substring("C:\BTR\Policies\Copilot".Length).TrimStart("\")
-    $symlinkPath = Join-Path "~\AppData\Roaming\Code\User\prompts" $relativePath
-    $symlinkDir = Split-Path $symlinkPath
-    New-Item -ItemType Directory -Path $symlinkDir -Force | Out-Null
-    New-Item -ItemType SymbolicLink -Path $symlinkPath -Target $_.FullName -Force
-
-	# Location for CLI Copilot
-	if ($_.Name -eq "copilot-instructions.md") {
-		$symlinkPath = Join-Path "~\.copilot" $relativePath
-		$symlinkDir = Split-Path $symlinkPath
-		New-Item -ItemType Directory -Path $symlinkDir -Force | Out-Null
-		New-Item -ItemType SymbolicLink -Path $symlinkPath -Target $_.FullName -Force
-	}
-	else {
-		# For other files, also create a symlink in the .copilot directory for CLI use
-		$symlinkPath = Join-Path "~\.copilot\agents" $relativePath
-		$symlinkDir = Split-Path $symlinkPath
-		New-Item -ItemType Directory -Path $symlinkDir -Force | Out-Null
-		New-Item -ItemType SymbolicLink -Path $symlinkPath -Target $_.FullName -Force
-	}
-}
+C:\BTR\Policies\Copilot\skills\kat-policies\scripts\update.ps1
 ```
+
+Once you've installed this once, the `kat-policies` skill will be available in your Copilot and Claude chats.  Simply ask to "update KAT policies" and the agent will run the script to remove old symbolic links and create new ones based on the latest policy files in `C:\BTR\Policies`.
 
 Edit only the files in `C:\BTR\Policies\`.  All projects immediately inherit the changes.  No need to update or copy files into individual repos.
 
