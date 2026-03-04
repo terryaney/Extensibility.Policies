@@ -21,4 +21,8 @@ If value is not 1, prompt user to enable by running the following command in an 
 Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" -Name "AllowDevelopmentWithoutDevLicense" -Value 1 -Type DWord -Force
 ```
 
-2.  If Developer Mode is enabled, execute the [script](./scripts/update.ps1) to synchronize all the symbolic links with the latest KAT Policy files.
+Stop processing if Developer Mode is not enabled.
+
+2.  Attempt to do a `git pull` in the `C:\BTR\Policies` folder to get the latest policy files.  If this fails (e.g., due to merge conflicts, uncommitted changes, etc.), output a warning that the latest files were not pulled from the repository and the reason why the pull failed.
+
+3.  Execute the [script](./scripts/update.ps1) to synchronize all the symbolic links with the latest KAT Policy files.

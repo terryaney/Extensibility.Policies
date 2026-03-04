@@ -2,13 +2,20 @@
 
 To ensure all developers use the same rules, we maintain a single source of truth under git source control management.  This folder contains shared development policies used across all local .NET and source controlled projects. These policies ensure consistent formatting, coding standards, and dependency management across all repositories.
 
+**NOTE:** 
+
+Edit only the files in `C:\BTR\Policies\`.  All projects immediately inherit the changes.  No need to update or copy files into individual repos.
+
+Because these configuration files are either hard coded locations or only discovered by walking upward from the project directory.  This ensures every BTR/KAT project by default picks up the shared rules. We expose files globally by creating a symlink (or copies with CreatedBy:KAT Alternative Data Stream (ADM) setting) at appropriate locations that can be cleaned up during the update process.
+
 ## Installation
 
 1. Clone repository to your local machine:
 	`git clone https://tfs.acsgs.com/tfs/PDSI/HRS2/_git/HRS%20BTR%20-%20extensibility.policies C:\BTR\Policies`
-1. Follow [instructions](#creating-the-symbolic-links-symlink-to-policy-configuration-files) below to create symbolic links to configuration files.
+1. Run following command in Terminal:
+	`C:\BTR\Policies\Copilot\skills\kat-policies\scripts\update.ps1`
 
-To update policy files, simply run `git pull` inside the `C:\BTR\Policies` folder.
+Once you've installed this once, the `kat-policies` skill will be available in your Copilot and Claude chats.  Simply ask to "update KAT policies" and the agent will pull the latest files and run the script automatically.
 
 ## Quick Reference
 
@@ -20,20 +27,6 @@ To update policy files, simply run `git pull` inside the `C:\BTR\Policies` folde
 | `/Copilot` | Provides consistent Copilot instructions and prompts for AI-assisted development in GitHub Copilot chats. |
 | `/Claude` | Provides consistent Claude instructions and prompts for AI-assisted development in Claude Code chats. |
 | `/Terminal` | Provides consistent Terminal settings for Windows Terminal. |
-
-## Creating the Symbolic Links (Symlink) to Policy Configuration Files
-
-Because these configuration files are either hard coded locations or only discovered by walking upward from the project directory, we expose this file globally by creating a symlink at appropriate locations.  This ensures every BTR/KAT project by default picks up the shared rules.
-
-Copy the following snippet and paste into Terminal/PowerShell:
-
-```powershell
-C:\BTR\Policies\Copilot\skills\kat-policies\scripts\update.ps1
-```
-
-Once you've installed this once, the `kat-policies` skill will be available in your Copilot and Claude chats.  Simply ask to "update KAT policies" and the agent will run the script to remove old symbolic links and create new ones based on the latest policy files in `C:\BTR\Policies`.
-
-Edit only the files in `C:\BTR\Policies\`.  All projects immediately inherit the changes.  No need to update or copy files into individual repos.
 
 ## Copilot Notes
 

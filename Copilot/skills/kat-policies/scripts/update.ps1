@@ -38,12 +38,13 @@ $copilotSource = "C:\BTR\Policies\Copilot"
 $promptsTarget = "$env:APPDATA\Code\User\prompts"
 $copilotTarget = "$env:USERPROFILE\.copilot"
 
-# Delete all existing symlinks in target folders, then remove empty subfolders
+# Delete all existing symlinks and KAT-managed agent copies in target folders, then remove empty subfolders
 foreach ($targetDir in @($promptsTarget, $copilotTarget)) {
     if (Test-Path $targetDir) {
-        Get-ChildItem -Path $targetDir -Recurse -File |
-            Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint } |
-            Remove-Item -Force
+        Get-ChildItem -Path $targetDir -Recurse -File | Where-Object {
+            ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+            (Get-Item -Path $_.FullName -Stream CreatedBy -ErrorAction SilentlyContinue)
+        } | Remove-Item -Force
         Get-ChildItem -Path $targetDir -Recurse -Directory |
             Sort-Object FullName -Descending |
             Where-Object { -not (Get-ChildItem $_.FullName -Force) } |
@@ -66,17 +67,28 @@ Get-ChildItem -Path $copilotSource -Recurse -File | ForEach-Object {
     elseif ($firstSegment -eq "Agents") {
         $agentsRelative = $relativePath.Substring("Agents\".Length)
 
-        # Agents → prompts (strip "Agents\" prefix)
-        $symlinkPath = Join-Path $promptsTarget $agentsRelative
-        $symlinkDir = Split-Path $symlinkPath
-        New-Item -ItemType Directory -Path $symlinkDir -Force | Out-Null
-        New-Item -ItemType SymbolicLink -Path $symlinkPath -Target $_.FullName -Force
+        # Agents → prompts (copy as-is for VS Code)
+        $copyPath = Join-Path $promptsTarget $agentsRelative
+        $copyDir = Split-Path $copyPath
+        New-Item -ItemType Directory -Path $copyDir -Force | Out-Null
+        Copy-Item -Path $_.FullName -Destination $copyPath -Force
+        Set-Content -Path $copyPath -Stream CreatedBy -Value "KAT"
 
-        # Agents → ~/.copilot/agents (strip "Agents\" prefix)
-        $symlinkPath = Join-Path "$copilotTarget\agents" $agentsRelative
-        $symlinkDir = Split-Path $symlinkPath
-        New-Item -ItemType Directory -Path $symlinkDir -Force | Out-Null
-        New-Item -ItemType SymbolicLink -Path $symlinkPath -Target $_.FullName -Force
+        # Agents → ~/.copilot/agents (copy with model name mapping for CLI)
+        $copyPath = Join-Path "$copilotTarget\agents" $agentsRelative
+        $copyDir = Split-Path $copyPath
+        New-Item -ItemType Directory -Path $copyDir -Force | Out-Null
+        $content = Get-Content -Path $_.FullName -Raw
+        # Map VS Code model names to CLI model names
+        $content = $content -replace 'model:\s*GPT-5\.3-Codex \(copilot\)', 'model: gpt-5.3-codex'
+        $content = $content -replace 'model:\s*Gemini 3 Pro \(Preview\) \(copilot\)', 'model: gemini-3-pro-preview'
+        $content = $content -replace 'model:\s*Claude Opus 4\.6 \(copilot\)', 'model: claude-opus-4.6'
+        $content = $content -replace 'model:\s*Claude Sonnet 4\.6 \(copilot\)', 'model: claude-sonnet-4.6'
+        # Strip VS Code-only YAML fields: agents and handoffs (including nested lines)
+        $content = $content -replace '(?m)^agents:\s*\[.*\]\r?\n', ''
+        $content = $content -replace '(?ms)^handoffs:\r?\n(^\s+.*\r?\n)*', ''
+        Set-Content -Path $copyPath -Value $content -NoNewline
+        Set-Content -Path $copyPath -Stream CreatedBy -Value "KAT"
     }
     else {
         # Root files → prompts
