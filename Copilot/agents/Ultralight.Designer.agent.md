@@ -1,5 +1,5 @@
 ---
-name: Ultralight Orchestration (Designer)
+name: Ultralight (Designer)
 description: Handles all UI/UX design tasks.
 model: Gemini 3 Pro (Preview) (copilot)
 tools: ['vscode', 'execute', 'read', 'agent', 'io.github.upstash/context7/*', 'edit', 'search', 'web', 'memory', 'todo']

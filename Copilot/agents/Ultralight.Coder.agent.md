@@ -1,5 +1,5 @@
 ---
-name: Ultralight Orchestration (Coder)
+name: Ultralight (Coder)
 description: Writes code following mandatory coding principles.
 model: GPT-5.3-Codex (copilot)
 tools: ['vscode', 'execute', 'read', 'agent', 'io.github.upstash/context7/*', 'github/*', 'edit', 'search', 'web', 'memory', 'todo']

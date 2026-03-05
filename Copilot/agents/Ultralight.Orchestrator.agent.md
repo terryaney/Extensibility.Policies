@@ -1,6 +1,6 @@
 ---
-name: Ultralight Orchestration (Orchestrator Sonnet 4.6)
-description: Delegate prompts to Planner (GPT-5.2), Coder (GPT-5.3-Codex), and Designer (Gemini 3 Pro (Preview))
+name: Ultralight (Orchestrator)
+description: Delegate prompts via Sonnet 4.6 to Planner (GPT-5.2), Coder (GPT-5.3-Codex), and Designer (Gemini 3 Pro (Preview))
 model: Claude Sonnet 4.6 (copilot)
 agents: ["Ultralight Orchestration (Planner)", "Ultralight Orchestration (Designer)", "Ultralight Orchestration (Coder)"]
 tools: ['read/readFile', 'agent', 'memory']
