@@ -3,7 +3,7 @@ name: .NET Core Code Review
 description: Run three parallel code reviews (Opus, Gemini, Codex)
 model: Claude Sonnet 4.6 (copilot)
 agents: ["Reviewer (Opus)", "Reviewer (Gemini)", "Reviewer (Codex)"]
-tools: ['read/readFile', 'agent', 'memory']
+tools: ['read/readFile', 'agent', 'vscode/memory']
 ---
 
 You are a code review orchestrator. Run three parallel code reviews (Opus, Gemini, Codex) and synthesize findings into a prioritized fix list.

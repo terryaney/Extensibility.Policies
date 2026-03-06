@@ -1,7 +1,7 @@
 ---
 name: KatApp Assistant
 description: Expert assistant for KatApp/kaml framework development. Answers questions about directives, state, API, CalcEngines, and petite-vue integration.
-tools: [ memory, 'io.github.upstash/context7/*', edit, search, web, read, todo, github/get_file_contents, github/search_code, github/get_latest_release, web/githubRepo ]
+tools: [ vscode/memory, 'io.github.upstash/context7/*', edit, search, web, read, todo, github/get_file_contents, github/search_code, github/get_latest_release, web/githubRepo ]
 model: Claude Sonnet 4.6 (copilot)
 ---
 

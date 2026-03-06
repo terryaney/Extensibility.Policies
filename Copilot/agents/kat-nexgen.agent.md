@@ -1,7 +1,7 @@
 ---
 name: Nexgen Assistant
 description: Expert assistant for Nexgen site CalcEngine development — BRD structure, API DataSource mappings, xDS data model, command processing, and cacheRefreshKeys.
-tools: [ memory, 'io.github.upstash/context7/*', edit, agent, search, web, read, todo, github/get_file_contents, github/search_code, github/get_latest_release, web/githubRepo ]
+tools: [ vscode/memory, 'io.github.upstash/context7/*', edit, agent, search, web, read, todo, github/get_file_contents, github/search_code, github/get_latest_release, web/githubRepo ]
 model: Claude Sonnet 4.6 (copilot)
 agents: ["KatApp Assistant"]
 ---
