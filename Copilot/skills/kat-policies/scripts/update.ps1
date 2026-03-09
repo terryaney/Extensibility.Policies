@@ -6,15 +6,15 @@ if ($devMode.AllowDevelopmentWithoutDevLicense -ne 1) {
 }
 
 New-Item -ItemType Directory -Path "C:\BTR" -Force | Out-Null
-New-Item -ItemType SymbolicLink -Path "C:\BTR\.editorconfig" -Target "C:\BTR\Policies\.editorconfig" -Force
+New-Item -ItemType SymbolicLink -Path "C:\BTR\.editorconfig" -Target "C:\BTR\Extensibility\Policies\.editorconfig" -Force
 
 # Create Terminal symlinks for all files
 $wtPackage = Get-AppxPackage -Name "Microsoft.WindowsTerminal"
 if ($wtPackage) {
     $wtLocalState = Join-Path $env:LOCALAPPDATA "Packages\$($wtPackage.PackageFamilyName)\LocalState"
     # Use $wtLocalState in your symlink path
-	Get-ChildItem -Path "C:\BTR\Policies\Terminal" -Recurse -File | ForEach-Object {
-		$relativePath = $_.FullName.Substring("C:\BTR\Policies\Terminal".Length).TrimStart("\")
+	Get-ChildItem -Path "C:\BTR\Extensibility\Policies\Terminal" -Recurse -File | ForEach-Object {
+		$relativePath = $_.FullName.Substring("C:\BTR\Extensibility\Policies\Terminal".Length).TrimStart("\")
 		$symlinkPath = Join-Path $wtLocalState $relativePath
 		$symlinkDir = Split-Path $symlinkPath
 		New-Item -ItemType Directory -Path $symlinkDir -Force | Out-Null
@@ -25,8 +25,8 @@ if ($wtPackage) {
 }
 
 # Create Claude symlinks for all files
-Get-ChildItem -Path "C:\BTR\Policies\Claude" -Recurse -File | ForEach-Object {
-    $relativePath = $_.FullName.Substring("C:\BTR\Policies\Claude".Length).TrimStart("\")
+Get-ChildItem -Path "C:\BTR\Extensibility\Policies\Claude" -Recurse -File | ForEach-Object {
+    $relativePath = $_.FullName.Substring("C:\BTR\Extensibility\Policies\Claude".Length).TrimStart("\")
     $symlinkPath = Join-Path "~\.claude" $relativePath
     $symlinkDir = Split-Path $symlinkPath
     New-Item -ItemType Directory -Path $symlinkDir -Force | Out-Null
@@ -34,7 +34,7 @@ Get-ChildItem -Path "C:\BTR\Policies\Claude" -Recurse -File | ForEach-Object {
 }
 
 # Create Copilot symlinks
-$copilotSource = "C:\BTR\Policies\Copilot"
+$copilotSource = "C:\BTR\Extensibility\Policies\Copilot"
 $promptsTarget = "$env:APPDATA\Code\User\prompts"
 $copilotTarget = "$env:USERPROFILE\.copilot"
 

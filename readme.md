@@ -4,16 +4,16 @@ To ensure all developers use the same rules, we maintain a single source of trut
 
 **NOTE:** 
 
-Edit only the files in `C:\BTR\Policies\`.  All projects immediately inherit the changes.  No need to update or copy files into individual repos.
+Edit only the files in `C:\BTR\Extensibility\Policies\`.  All projects immediately inherit the changes.  No need to update or copy files into individual repos.
 
 Because these configuration files are either hard coded locations or only discovered by walking upward from the project directory.  This ensures every BTR/KAT project by default picks up the shared rules. We expose files globally by creating a symlink (or copies with CreatedBy:KAT Alternative Data Stream (ADM) setting) at appropriate locations that can be cleaned up during the update process.
 
 ## Installation
 
 1. Clone repository to your local machine:
-	`git clone https://tfs.acsgs.com/tfs/PDSI/HRS2/_git/HRS%20BTR%20-%20extensibility.policies C:\BTR\Policies`
+	`git clone https://tfs.acsgs.com/tfs/PDSI/HRS2/_git/HRS%20BTR%20-%20extensibility.policies C:\BTR\Extensibility\Policies`
 1. Run following command in Terminal:
-	`C:\BTR\Policies\Copilot\skills\kat-policies\scripts\update.ps1`
+	`C:\BTR\Extensibility\Policies\Copilot\skills\kat-policies\scripts\update.ps1`
 
 Once you've installed this once, the `kat-policies` skill will be available in your Copilot and Claude chats.  Simply ask to "update KAT policies" and the agent will pull the latest files and run the script automatically.
 
@@ -66,7 +66,7 @@ All .csproj files for a given framework (Evolution, Camelot, etc.) should import
 
 ```xml
 <Project>
-  <Import Project="C:\BTR\Policies\Directory.Packages.Camelot.props" />
+  <Import Project="C:\BTR\Extensibility\Policies\Directory.Packages.Camelot.props" />
 </Project>
 ```
 
