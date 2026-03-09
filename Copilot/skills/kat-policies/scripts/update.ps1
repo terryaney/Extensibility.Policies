@@ -81,6 +81,7 @@ Get-ChildItem -Path $copilotSource -Recurse -File | ForEach-Object {
         $content = Get-Content -Path $_.FullName -Raw
         # Map VS Code model names to CLI model names
         $content = $content -replace 'model:\s*GPT-5\.3-Codex \(copilot\)', 'model: gpt-5.3-codex'
+        $content = $content -replace 'model:\s*GPT-5\.4 \(copilot\)', 'model: gpt-5.4'
         $content = $content -replace 'model:\s*Gemini 3 Pro \(Preview\) \(copilot\)', 'model: gemini-3-pro-preview'
         $content = $content -replace 'model:\s*Claude Opus 4\.6 \(copilot\)', 'model: claude-opus-4.6'
         $content = $content -replace 'model:\s*Claude Sonnet 4\.6 \(copilot\)', 'model: claude-sonnet-4.6'

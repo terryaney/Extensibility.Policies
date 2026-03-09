@@ -1,7 +1,7 @@
 ---
 name: Ultralight (Planner)
 description: Creates comprehensive implementation plans by researching the codebase, consulting documentation, and identifying edge cases. Use when you need a detailed plan before implementing a feature or fixing a complex issue.
-model: Claude Sonnet 4.6 (copilot)
+model: GPT-5.4 (copilot)
 tools: ['vscode', 'execute', 'read', 'agent', 'io.github.upstash/context7/*', 'edit', 'search', 'web', 'vscode/memory', 'todo']
 ---
 
