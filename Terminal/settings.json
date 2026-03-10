@@ -12,6 +12,13 @@
                 "split": "right"
             },
             "id": "Add.Copilot.Pane"
+        },
+        {
+            "command": {
+                "action": "sendInput",
+                "input": "\u001b\r"
+            },
+            "keys": "shift+enter"
         }
     ],
     "defaultProfile": "{d30f7331-fe8f-437a-b2c4-95f3de1b132d}",
@@ -19,10 +26,10 @@
     "initialRows": 35,
     "keybindings": 
     [
-        {
-            "id": "Add.Copilot.Pane",
-            "keys": "ctrl+shift+c"
-        },
+		{
+			"id": "Add.Copilot.Pane",
+			"keys": "ctrl+shift+c"
+		},
         {
             "id": "Terminal.PasteFromClipboard",
             "keys": "ctrl+v"
