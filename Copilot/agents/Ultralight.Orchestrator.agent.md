@@ -1,5 +1,5 @@
 ---
-name: Ultralight (Orchestrator)
+name: Ultralight Orchestrator
 description: Delegate prompts via GPT-5.4 to Planner (GPT-5.2), Coder (GPT-5.3-Codex), and Designer (Gemini 3 Pro (Preview))
 model: GPT-5.4 (copilot)
 agents: ["Ultralight (Planner)", "Ultralight (Designer)", "Ultralight (Coder)"]

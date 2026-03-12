@@ -33,13 +33,13 @@ Get-ChildItem -Path "C:\BTR\Extensibility\Policies\Claude" -Recurse -File | ForE
     New-Item -ItemType SymbolicLink -Path $symlinkPath -Target $_.FullName -Force
 }
 
-# Create Copilot symlinks
+# Create Copilot Copies
 $copilotSource = "C:\BTR\Extensibility\Policies\Copilot"
-$promptsTarget = "$env:APPDATA\Code\User\prompts"
-$copilotTarget = "$env:USERPROFILE\.copilot"
+$copilotVsCode = "$env:APPDATA\Code\User"
+$copilotCli = "$env:USERPROFILE\.copilot"
 
 # Delete all existing symlinks and KAT-managed agent copies in target folders, then remove empty subfolders
-foreach ($targetDir in @($promptsTarget, $copilotTarget)) {
+foreach ($targetDir in @($copilotVsCode, $copilotCli)) {
     if (Test-Path $targetDir) {
         Get-ChildItem -Path $targetDir -Recurse -File | Where-Object {
             ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
@@ -56,26 +56,34 @@ Get-ChildItem -Path $copilotSource -Recurse -File | ForEach-Object {
     $relativePath = $_.FullName.Substring($copilotSource.Length).TrimStart("\")
     $firstSegment = $relativePath.Split("\")[0]
 
-    if ($firstSegment -eq "Skills") {
-        # Skills → ~/.copilot/skills (strip "Skills\" prefix)
-        $skillsRelative = $relativePath.Substring("Skills\".Length)
-        $symlinkPath = Join-Path "$copilotTarget\skills" $skillsRelative
+    if ($firstSegment -eq "instructions" -or $firstSegment -eq "skills") {
+        # Skills → ~/.copilot/skills|instructions
+        $symlinkPath = Join-Path $copilotCli $relativePath
         $symlinkDir = Split-Path $symlinkPath
         New-Item -ItemType Directory -Path $symlinkDir -Force | Out-Null
         New-Item -ItemType SymbolicLink -Path $symlinkPath -Target $_.FullName -Force
-    }
-    elseif ($firstSegment -eq "Agents") {
-        $agentsRelative = $relativePath.Substring("Agents\".Length)
+
+		# Copilot has own copy of instructions for VS Code
+		if ($firstSegment -eq "instructions") {
+			# Skills → ~/AppData/Roaming/Code/User/instructions
+			$symlinkPath = Join-Path $copilotVsCode $relativePath
+			$symlinkDir = Split-Path $symlinkPath
+			New-Item -ItemType Directory -Path $symlinkDir -Force | Out-Null
+			New-Item -ItemType SymbolicLink -Path $symlinkPath -Target $_.FullName -Force
+		}
+	}
+    elseif ($firstSegment -eq "agents") {
+        $agentsRelative = $relativePath.Substring("agents\".Length)
 
         # Agents → prompts (copy as-is for VS Code)
-        $copyPath = Join-Path $promptsTarget $agentsRelative
+        $copyPath = Join-Path "$copilotVsCode\prompts" $agentsRelative
         $copyDir = Split-Path $copyPath
         New-Item -ItemType Directory -Path $copyDir -Force | Out-Null
         Copy-Item -Path $_.FullName -Destination $copyPath -Force
         Set-Content -Path $copyPath -Stream CreatedBy -Value "KAT"
 
         # Agents → ~/.copilot/agents (copy with model name mapping for CLI)
-        $copyPath = Join-Path "$copilotTarget\agents" $agentsRelative
+        $copyPath = Join-Path "$copilotCli\agents" $agentsRelative
         $copyDir = Split-Path $copyPath
         New-Item -ItemType Directory -Path $copyDir -Force | Out-Null
         $content = Get-Content -Path $_.FullName -Raw
@@ -90,19 +98,6 @@ Get-ChildItem -Path $copilotSource -Recurse -File | ForEach-Object {
         $content = $content -replace '(?ms)^handoffs:\r?\n(^\s+.*\r?\n)*', ''
         Set-Content -Path $copyPath -Value $content -NoNewline
         Set-Content -Path $copyPath -Stream CreatedBy -Value "KAT"
-    }
-    else {
-        # Root files → prompts
-        $symlinkPath = Join-Path $promptsTarget $relativePath
-        $symlinkDir = Split-Path $symlinkPath
-        New-Item -ItemType Directory -Path $symlinkDir -Force | Out-Null
-        New-Item -ItemType SymbolicLink -Path $symlinkPath -Target $_.FullName -Force
-
-        # Root files → ~/.copilot
-        $symlinkPath = Join-Path $copilotTarget $relativePath
-        $symlinkDir = Split-Path $symlinkPath
-        New-Item -ItemType Directory -Path $symlinkDir -Force | Out-Null
-        New-Item -ItemType SymbolicLink -Path $symlinkPath -Target $_.FullName -Force
     }
 }
 

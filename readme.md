@@ -30,7 +30,7 @@ Once you've installed this once, the `kat-policies` skill will be available in y
 
 ## Copilot Notes
 
-**Ultralight (Orchestrator) **
+**Ultralight Orchestrator **
 
 - Started from Burke Holland's [ultralight](https://burkeholland.github.io/ultralight/)
 - Updated Coder from Claude Opus 4.6 (copilot) to GPT-5.3-Codex (copilot) from [Montemagno](https://x.com/jamesmontemagno/status/2023941950815302139?s=52) - want to see his agent files still.  Also one comment was 'single-pass full implementation', should I try to put that in planner/orchestrator?
