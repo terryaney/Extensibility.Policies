@@ -14,11 +14,12 @@
             "id": "Add.Copilot.Pane"
         },
         {
-            "command": {
+            "command": 
+            {
                 "action": "sendInput",
                 "input": "\u001b\r"
             },
-            "keys": "shift+enter"
+            "id": "Terminal.ShiftEnter"
         }
     ],
     "defaultProfile": "{d30f7331-fe8f-437a-b2c4-95f3de1b132d}",
@@ -26,10 +27,14 @@
     "initialRows": 35,
     "keybindings": 
     [
-		{
-			"id": "Add.Copilot.Pane",
-			"keys": "ctrl+shift+c"
-		},
+        {
+            "id": "Terminal.ShiftEnter",
+            "keys": "shift+enter"
+        },
+        {
+            "id": "Add.Copilot.Pane",
+            "keys": "ctrl+shift+c"
+        },
         {
             "id": "Terminal.PasteFromClipboard",
             "keys": "ctrl+v"
@@ -145,10 +150,10 @@
                 "backgroundImageAlignment": "bottomRight",
                 "backgroundImageOpacity": 0.1,
                 "backgroundImageStretchMode": "none",
+                "icon": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\github-copilot-cli.png",
                 "commandline": "pwsh.exe -c copilot",
                 "guid": "{4ebca267-0832-471c-8aea-c556cc829839}",
                 "hidden": false,
-                "icon": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\github-copilot-cli.png",
                 "name": "GitHub Copilot CLI",
                 "startingDirectory": "C:\\BTR\\Camelot"
             },
