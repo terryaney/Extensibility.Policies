@@ -181,7 +181,7 @@
                 "commandline": "pwsh.exe -c copilot",
                 "guid": "{4ebca267-0832-471c-8aea-c556cc829839}",
                 "hidden": false,
-                "name": "GitHub Copilot CLI2",
+                "name": "GitHub Copilot CLI",
                 "startingDirectory": "C:\\BTR\\Camelot"
             },
             {

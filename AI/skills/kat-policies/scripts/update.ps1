@@ -64,7 +64,7 @@ function Invoke-PolicySync {
         $terminalRoot = Join-Path $env:LOCALAPPDATA "Packages\$($wtPackage.PackageFamilyName)\LocalState"
     }
     else {
-        Add-Warning 'Windows Terminal not found. Skipping Terminal links.'
+        Add-Warning 'Windows Terminal not found. Skipping Terminal file sync.'
     }
 
     $managedContexts = @(
@@ -90,7 +90,7 @@ function Invoke-PolicySync {
         Get-ChildItem -LiteralPath (Join-Path $repoRoot 'Terminal') -Recurse -File | ForEach-Object {
             $relativePath = $_.FullName.Substring((Join-Path $repoRoot 'Terminal').Length).TrimStart('\')
             $targetPath = Join-Path $terminalRoot $relativePath
-            $targetSucceeded = Write-ManagedHardLink -Path $targetPath -Target $_.FullName
+            $targetSucceeded = Copy-ManagedFile -Path $targetPath -SourcePath $_.FullName
             Add-DeploymentRecord -Category 'link' -Id ('Terminal/' + ($relativePath -replace '\\', '/')) -Target 'terminal' -Status $(if ($targetSucceeded) { 'ok' } else { 'blocked' }) -Path $targetPath
         }
     }
@@ -934,6 +934,18 @@ function Write-CreatedByStream {
     }
 }
 
+function Set-ManagedReadOnly {
+    param([string]$Path)
+
+    try {
+        $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+        $item.IsReadOnly = $true
+    }
+    catch {
+        # Read-only is best-effort only.
+    }
+}
+
 function Write-ManagedFile {
     param(
         [string]$Path,
@@ -948,6 +960,7 @@ function Write-ManagedFile {
 
     Set-Content -LiteralPath $Path -Value $Content -NoNewline
     Write-CreatedByStream -Path $Path
+    Set-ManagedReadOnly -Path $Path
     return $true
 }
 
@@ -967,10 +980,10 @@ function Write-ManagedSymlink {
     return $true
 }
 
-function Write-ManagedHardLink {
+function Copy-ManagedFile {
     param(
         [string]$Path,
-        [string]$Target
+        [string]$SourcePath
     )
 
     New-Directory (Split-Path -Parent $Path)
@@ -980,8 +993,9 @@ function Write-ManagedHardLink {
     }
 
     try {
-        New-Item -ItemType HardLink -Path $Path -Target $Target -Force | Out-Null
+        Copy-Item -LiteralPath $SourcePath -Destination $Path -Force
         Write-CreatedByStream -Path $Path
+        Set-ManagedReadOnly -Path $Path
         return $true
     }
     catch {
