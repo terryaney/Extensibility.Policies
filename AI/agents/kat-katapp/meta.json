@@ -1,0 +1,37 @@
+{
+  "id": "kat-katapp",
+  "name": "KatApp Assistant",
+  "description": "Expert assistant for KatApp/kaml framework development. Answers questions about directives, state, API, CalcEngines, and petite-vue integration.",
+  "enabled": {
+    "vscode": true,
+    "copilotCli": true,
+    "claude": true
+  },
+  "models": {
+    "vscode": "GPT-5.4 (copilot)",
+    "copilotCli": "gpt-5.4",
+    "claude": "default"
+  },
+  "tools": {
+    "copilot": [
+      "vscode/memory",
+      "io.github.upstash/context7/*",
+      "edit",
+      "search",
+      "web",
+      "read",
+      "todo",
+      "github/get_file_contents",
+      "github/search_code",
+      "github/get_latest_release",
+      "web/githubRepo"
+    ],
+    "claude": "auto"
+  },
+  "copilot": {
+    "userInvocable": true
+  },
+  "claude": {
+    "target": "agent"
+  }
+}

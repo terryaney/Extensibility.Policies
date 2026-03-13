@@ -1,0 +1,12 @@
+{
+  "id": "kat-policies",
+  "name": "kat-policies",
+  "description": "Update all the AI features (commands, skills, agents, etc.) for Claude and Copilot when a user asks to update KAT Policies (or Policy files).",
+  "enabled": {
+    "copilot": true,
+    "claude": true
+  },
+  "claude": {
+    "exposeCommands": false
+  }
+}

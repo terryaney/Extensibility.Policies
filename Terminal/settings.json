@@ -16,6 +16,16 @@
         {
             "command": 
             {
+                "action": "splitPane",
+                "profile": "Claude Code",
+                "size": 0.4,
+                "split": "right"
+            },
+            "id": "Add.Claude.Pane"
+        },
+        {
+            "command": 
+            {
                 "action": "sendInput",
                 "input": "\u001b\r"
             },
@@ -34,6 +44,10 @@
         {
             "id": "Add.Copilot.Pane",
             "keys": "ctrl+shift+c"
+        },
+        {
+            "id": "Add.Claude.Pane",
+            "keys": "ctrl+alt+c"
         },
         {
             "id": "Terminal.PasteFromClipboard",
@@ -145,16 +159,29 @@
                 "startingDirectory": "C:\\Windows\\System32\\drivers\\etc"
             },
             {
+				"background": "#FAF6EF",
+                "backgroundImage": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\claude-background.png",
+				"backgroundImageAlignment": "bottomRight",
+				"backgroundImageOpacity": 0.1,
+                "backgroundImageStretchMode": "none",
+                "icon": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\claude.png",
+                "commandline": "pwsh.exe -c claude",
+                "guid": "{f420a4f3-164e-4243-8a99-57cd44e9fcc2}",
+                "hidden": false,
+                "name": "Claude Code",
+                "startingDirectory": "C:\\BTR\\Camelot"
+            },
+            {
                 "background": "#321E59",
                 "backgroundImage": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\github-copilot-cli-background.png",
                 "backgroundImageAlignment": "bottomRight",
-                "backgroundImageOpacity": 0.1,
+				"backgroundImageOpacity": 0.1,
                 "backgroundImageStretchMode": "none",
                 "icon": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\github-copilot-cli.png",
                 "commandline": "pwsh.exe -c copilot",
                 "guid": "{4ebca267-0832-471c-8aea-c556cc829839}",
                 "hidden": false,
-                "name": "GitHub Copilot CLI",
+                "name": "GitHub Copilot CLI2",
                 "startingDirectory": "C:\\BTR\\Camelot"
             },
             {

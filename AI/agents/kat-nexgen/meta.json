@@ -1,0 +1,41 @@
+{
+  "id": "kat-nexgen",
+  "name": "Nexgen Assistant",
+  "description": "Expert assistant for Nexgen site CalcEngine development — BRD structure, API DataSource mappings, xDS data model, command processing, and cacheRefreshKeys.",
+  "enabled": {
+    "vscode": true,
+    "copilotCli": true,
+    "claude": true
+  },
+  "models": {
+    "vscode": "GPT-5.4 (copilot)",
+    "copilotCli": "gpt-5.4",
+    "claude": "default"
+  },
+  "tools": {
+    "copilot": [
+      "vscode/memory",
+      "io.github.upstash/context7/*",
+      "edit",
+      "agent",
+      "search",
+      "web",
+      "read",
+      "todo",
+      "github/get_file_contents",
+      "github/search_code",
+      "github/get_latest_release",
+      "web/githubRepo"
+    ],
+    "claude": "auto"
+  },
+  "copilot": {
+    "userInvocable": true,
+    "agents": [
+      "KatApp Assistant"
+    ]
+  },
+  "claude": {
+    "target": "agent"
+  }
+}
