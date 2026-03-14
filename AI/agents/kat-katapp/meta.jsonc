@@ -1,0 +1,82 @@
+{
+	"id": "kat-katapp",
+	"name": "KatApp Assistant",
+	"description": "Expert assistant for KatApp/kaml framework development. Answers questions about directives, state, API, CalcEngines, and petite-vue integration.",
+	"enabled": {
+		"vscode": true,
+		"copilotCli": true,
+		"claude": true
+	},
+	"models": {
+		"vscode": "GPT-5.4 (copilot)",
+		"copilotCli": "gpt-5.4",
+		"claude": "default"
+	},
+	"tools": {
+		// vscode/memory stays on Copilot; Claude uses the explicit memory field below
+		"vscode/memory": {},
+		// Context7 MCP -> explicit Claude MCP tool names
+		"io.github.upstash/context7/*": {
+			"claude": [
+				"mcp__context7__resolve-library-id",
+				"mcp__context7__get-library-docs"
+			]
+		},
+		// edit -> Claude Edit
+		"edit": {
+			"claude": "Edit"
+		},
+		// search -> Claude Grep + Glob
+		"search": {
+			"claude": [
+				"Grep",
+				"Glob"
+			]
+		},
+		// web -> Claude WebFetch
+		"web": {
+			"claude": "WebFetch"
+		},
+		// read -> Claude Read
+		"read": {
+			"claude": "Read"
+		},
+		// todo -> Claude TodoWrite
+		"todo": {
+			"claude": "TodoWrite"
+		},
+		// GitHub-specific Copilot tool -> generic Claude fallback
+		"github/get_file_contents": {
+			"claude": [
+				"Bash",
+				"WebFetch"
+			]
+		},
+		// GitHub-specific Copilot tool -> generic Claude fallback
+		"github/search_code": {
+			"claude": [
+				"Bash",
+				"WebFetch"
+			]
+		},
+		// GitHub-specific Copilot tool -> generic Claude fallback
+		"github/get_latest_release": {
+			"claude": [
+				"Bash",
+				"WebFetch"
+			]
+		},
+		// web/githubRepo -> Claude WebFetch
+		"web/githubRepo": {
+			"claude": "WebFetch"
+		}
+	},
+	"copilot": {
+		"userInvocable": true
+	},
+	"claude": {
+		"target": "agent",
+		// vscode/memory -> Claude persistent memory
+		"memory": "user"
+	}
+}

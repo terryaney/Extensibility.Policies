@@ -10,7 +10,9 @@ This file documents the canonical metadata supported by the KAT policies rendere
 
 ## Agent Meta
 
-Path: `/AI/agents/<id>/meta.json`
+Path: `/AI/agents/<id>/meta.jsonc`
+
+Canonical format: `meta.jsonc`. The renderer still accepts legacy `meta.json` for compatibility, but new or edited metadata should use `meta.jsonc`.
 
 Supported top-level fields:
 
@@ -25,12 +27,18 @@ Supported top-level fields:
 | `models.vscode` | string | no | Copilot VS Code model name. |
 | `models.copilotCli` | string | no | Copilot CLI model name. |
 | `models.claude` | string | no | Claude model name. |
-| `tools.copilot` | string[] | no | Rendered as Copilot `tools`. |
-| `tools.claude` | string[] or `"auto"` | no | `"auto"` maps known Copilot tools to closest Claude tools and emits warnings for gaps. |
+| `tools.copilot` | string[] | no | Legacy format. Rendered as Copilot `tools`. |
+| `tools.claude` | string[] or `"auto"` | no | Legacy format. `"auto"` maps known Copilot tools to closest Claude tools and emits warnings for gaps. |
+| `tools.<toolId>.vscode` | string or string[] | no | Explicit format. Overrides the VS Code tool id(s) emitted for one canonical tool entry. Defaults to `<toolId>` when omitted. |
+| `tools.<toolId>.copilotCli` | string or string[] | no | Explicit format. Overrides the Copilot CLI tool id(s) emitted for one canonical tool entry. Defaults to `<toolId>` when omitted. |
+| `tools.<toolId>.claude` | string or string[] | no | Explicit format. Claude tool id(s) emitted for one canonical tool entry. Omitted means no Claude mapping. |
 | `copilot.userInvocable` | bool | no | Rendered as `user-invocable` for Copilot agent files. |
 | `copilot.agents` | string[] | no | VS Code Copilot only. Omitted from CLI and Claude rendering. |
 | `copilot.handoffs` | object[] | no | VS Code Copilot only. Omitted from CLI and Claude rendering. |
 | `claude.target` | string | no | `agent` or `command`. Defaults to `agent`. |
+| `claude.memory` | string | no | Claude memory scope for rendered agents. Current supported values are `user`, `project`, or `local`. |
+
+When using `meta.jsonc`, line comments are allowed and are stripped before parsing.
 
 Supported `copilot.handoffs[]` fields:
 
@@ -43,7 +51,9 @@ Supported `copilot.handoffs[]` fields:
 
 ## Instruction Meta
 
-Path: `/AI/instructions/<id>/meta.json`
+Path: `/AI/instructions/<id>/meta.jsonc`
+
+Canonical format: `meta.jsonc`. The renderer still accepts legacy `meta.json` for compatibility, but new or edited metadata should use `meta.jsonc`.
 
 Supported fields:
 
@@ -62,7 +72,9 @@ Supported fields:
 
 ## Skill Meta
 
-Path: `/AI/skills/<id>/meta.json`
+Path: `/AI/skills/<id>/meta.jsonc`
+
+Canonical format: `meta.jsonc`. The renderer still accepts legacy `meta.json` for compatibility, but new or edited metadata should use `meta.jsonc`.
 
 Canonical skill bodies live in `/AI/skills/<id>/SKILL.md` without frontmatter. The renderer emits target-facing `SKILL.md` files using the fields below.
 
@@ -80,4 +92,4 @@ Supported fields:
 | `enabled.claude` | bool | no | Defaults to `true`. Publishes the rendered skill into Claude. |
 | `claude.exposeCommands` | bool | no | If `true`, any `commands/*.md` files are also linked into `~/.claude/commands`. Defaults to whether the canonical skill has a `commands/` directory. |
 
-The renderer excludes canonical `meta.json` from published skill directories. Everything else in the skill directory is linked beside the rendered `SKILL.md`.
+The renderer excludes canonical `meta.json` and `meta.jsonc` from published skill directories. Everything else in the skill directory is linked beside the rendered `SKILL.md`.

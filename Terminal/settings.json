@@ -6,26 +6,6 @@
         {
             "command": 
             {
-                "action": "splitPane",
-                "profile": "GitHub Copilot CLI",
-                "size": 0.4,
-                "split": "right"
-            },
-            "id": "Add.Copilot.Pane"
-        },
-        {
-            "command": 
-            {
-                "action": "splitPane",
-                "profile": "Claude Code",
-                "size": 0.4,
-                "split": "right"
-            },
-            "id": "Add.Claude.Pane"
-        },
-        {
-            "command": 
-            {
                 "action": "sendInput",
                 "input": "\u001b\r"
             },
@@ -40,14 +20,6 @@
         {
             "id": "Terminal.ShiftEnter",
             "keys": "shift+enter"
-        },
-        {
-            "id": "Add.Copilot.Pane",
-            "keys": "ctrl+shift+c"
-        },
-        {
-            "id": "Add.Claude.Pane",
-            "keys": "ctrl+alt+c"
         },
         {
             "id": "Terminal.PasteFromClipboard",

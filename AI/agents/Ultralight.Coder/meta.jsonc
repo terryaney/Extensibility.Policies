@@ -1,0 +1,74 @@
+{
+	"id": "Ultralight.Coder",
+	"name": "Ultralight (Coder)",
+	"description": "Writes code following mandatory coding principles.",
+	"enabled": {
+		"vscode": true,
+		"copilotCli": true,
+		"claude": true
+	},
+	"models": {
+		"vscode": "GPT-5.3-Codex (copilot)",
+		"copilotCli": "gpt-5.3-codex",
+		"claude": "default"
+	},
+	"tools": {
+		// vscode workspace/editor affordances are Copilot-only
+		"vscode": {},
+		// execute -> Claude Bash
+		"execute": {
+			"claude": "Bash"
+		},
+		// read -> Claude Read
+		"read": {
+			"claude": "Read"
+		},
+		// agent -> Claude Agent
+		"agent": {
+			"claude": "Agent"
+		},
+		// Context7 MCP -> explicit Claude MCP tool names
+		"io.github.upstash/context7/*": {
+			"claude": [
+				"mcp__context7__resolve-library-id",
+				"mcp__context7__get-library-docs"
+			]
+		},
+		// GitHub-specific Copilot tools -> generic Claude fallback
+		"github/*": {
+			"claude": [
+				"Bash",
+				"WebFetch"
+			]
+		},
+		// edit -> Claude Edit
+		"edit": {
+			"claude": "Edit"
+		},
+		// search -> Claude Grep + Glob
+		"search": {
+			"claude": [
+				"Grep",
+				"Glob"
+			]
+		},
+		// web -> Claude WebFetch
+		"web": {
+			"claude": "WebFetch"
+		},
+		// vscode/memory stays on Copilot; Claude uses the explicit memory field below
+		"vscode/memory": {},
+		// todo -> Claude TodoWrite
+		"todo": {
+			"claude": "TodoWrite"
+		}
+	},
+	"copilot": {
+		"userInvocable": false
+	},
+	"claude": {
+		"target": "agent",
+		// vscode/memory -> Claude persistent memory
+		"memory": "user"
+	}
+}

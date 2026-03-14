@@ -14,6 +14,7 @@ $aiRoot = Join-Path $repoRoot 'AI'
 $compatibilityMessages = New-Object System.Collections.Generic.List[string]
 $blockedPaths = New-Object System.Collections.Generic.List[string]
 $deploymentRecords = New-Object System.Collections.Generic.List[object]
+$script:claudeContext7Configured = $null
 
 function Add-Warning {
     param([string]$Message)
@@ -102,7 +103,7 @@ function Invoke-PolicySync {
     }
 
     foreach ($agentDir in Get-AgentDirectories) {
-        $meta = Read-CanonicalMeta -Path (Join-Path $agentDir.FullName 'meta.json')
+        $meta = Read-CanonicalMeta -Path (Get-CanonicalMetaPath -Directory $agentDir)
         $body = Get-Content -LiteralPath (Join-Path $agentDir.FullName 'body.md') -Raw
         $enabled = Get-Prop $meta 'enabled'
         $id = Get-Prop $meta 'id' $agentDir.Name
@@ -144,7 +145,7 @@ function Invoke-PolicySync {
     $claudeImports = New-Object System.Collections.Generic.List[string]
     $claudeImportIds = New-Object System.Collections.Generic.List[string]
     foreach ($instructionDir in Get-InstructionDirectories) {
-        $meta = Read-CanonicalMeta -Path (Join-Path $instructionDir.FullName 'meta.json')
+        $meta = Read-CanonicalMeta -Path (Get-CanonicalMetaPath -Directory $instructionDir)
         $body = Get-Content -LiteralPath (Join-Path $instructionDir.FullName 'body.md') -Raw
         $enabled = Get-Prop $meta 'enabled'
         $id = Get-Prop $meta 'id' $instructionDir.Name
@@ -1048,6 +1049,181 @@ function New-DocumentContent {
     return ($document + '' + $Body) -join "`r`n"
 }
 
+function ConvertFrom-JsonWithComments {
+    param([string]$Content)
+
+    $builder = New-Object System.Text.StringBuilder
+    $inString = $false
+    $isEscaped = $false
+    $inLineComment = $false
+    $inBlockComment = $false
+
+    for ($index = 0; $index -lt $Content.Length; $index++) {
+        $character = $Content[$index]
+        $nextCharacter = if ($index + 1 -lt $Content.Length) { $Content[$index + 1] } else { [char]0 }
+
+        if ($inLineComment) {
+            if ($character -eq "`r" -or $character -eq "`n") {
+                $inLineComment = $false
+                [void]$builder.Append($character)
+            }
+            continue
+        }
+
+        if ($inBlockComment) {
+            if ($character -eq '*' -and $nextCharacter -eq '/') {
+                $inBlockComment = $false
+                $index++
+            }
+            continue
+        }
+
+        if ($inString) {
+            [void]$builder.Append($character)
+            if ($isEscaped) {
+                $isEscaped = $false
+                continue
+            }
+
+            if ($character -eq '\\') {
+                $isEscaped = $true
+                continue
+            }
+
+            if ($character -eq '"') {
+                $inString = $false
+            }
+            continue
+        }
+
+        if ($character -eq '/' -and $nextCharacter -eq '/') {
+            $inLineComment = $true
+            $index++
+            continue
+        }
+
+        if ($character -eq '/' -and $nextCharacter -eq '*') {
+            $inBlockComment = $true
+            $index++
+            continue
+        }
+
+        [void]$builder.Append($character)
+        if ($character -eq '"') {
+            $inString = $true
+        }
+    }
+
+    return ConvertFrom-Json $builder.ToString()
+}
+
+function Test-LegacyToolConfiguration {
+    param([object]$Tools)
+
+    if ($null -eq $Tools) {
+        return $false
+    }
+
+    return ($null -ne $Tools.PSObject.Properties['copilot']) -or ($null -ne $Tools.PSObject.Properties['claude'])
+}
+
+function Get-ConfiguredToolsForClient {
+    param(
+        [object]$Meta,
+        [string]$Client
+    )
+
+    $tools = Get-Prop $Meta 'tools'
+    if ($null -eq $tools) {
+        return ,@()
+    }
+
+    if (Test-LegacyToolConfiguration -Tools $tools) {
+        switch ($Client) {
+            'vscode' {
+                return ,(ConvertTo-StringArray (Get-Prop $tools 'copilot'))
+            }
+            'copilotCli' {
+                return ,(ConvertTo-StringArray (Get-Prop $tools 'copilot'))
+            }
+            'claude' {
+                return ,(Get-ClaudeToolMappings -Meta $Meta -ArtifactLabel (Get-Prop $Meta 'id'))
+            }
+            default {
+                return ,@()
+            }
+        }
+    }
+
+    $resolvedTools = New-Object System.Collections.Generic.List[string]
+    foreach ($toolProperty in @($tools.PSObject.Properties)) {
+        $toolName = $toolProperty.Name
+        $definition = $toolProperty.Value
+        $hasClientProperty = $false
+        $mappedValue = $null
+
+        if ($null -ne $definition) {
+            $clientProperty = $definition.PSObject.Properties[$Client]
+            if ($null -ne $clientProperty) {
+                $hasClientProperty = $true
+                $mappedValue = $clientProperty.Value
+            }
+        }
+
+        if ($Client -eq 'claude') {
+            $toolValues = if ($hasClientProperty) { ConvertTo-StringArray $mappedValue } else { @() }
+        }
+        else {
+            $toolValues = if ($hasClientProperty) { ConvertTo-StringArray $mappedValue } else { @($toolName) }
+        }
+
+        foreach ($toolValue in $toolValues) {
+            if (-not $resolvedTools.Contains($toolValue)) {
+                $resolvedTools.Add($toolValue)
+            }
+        }
+    }
+
+    return ,($resolvedTools.ToArray())
+}
+
+function Get-ClaudeMemoryScope {
+    param([object]$Meta)
+
+    $claudeMeta = Get-Prop $Meta 'claude'
+    $memoryScope = Get-Prop $claudeMeta 'memory'
+    if ([string]::IsNullOrWhiteSpace([string]$memoryScope)) {
+        return $null
+    }
+
+    return [string]$memoryScope
+}
+
+function Test-ClaudeContext7Configured {
+    if ($null -ne $script:claudeContext7Configured) {
+        return $script:claudeContext7Configured
+    }
+
+    $script:claudeContext7Configured = $false
+    $claudeConfigPath = Join-Path $env:USERPROFILE '.claude.json'
+    if (-not (Test-Path -LiteralPath $claudeConfigPath)) {
+        return $script:claudeContext7Configured
+    }
+
+    try {
+        $config = ConvertFrom-Json (Get-Content -LiteralPath $claudeConfigPath -Raw)
+        $mcpServers = $config.PSObject.Properties['mcpServers']
+        if ($null -ne $mcpServers -and $null -ne $mcpServers.Value) {
+            $script:claudeContext7Configured = $null -ne $mcpServers.Value.PSObject.Properties['context7']
+        }
+    }
+    catch {
+        $script:claudeContext7Configured = $false
+    }
+
+    return $script:claudeContext7Configured
+}
+
 function Get-ClaudeToolMappings {
     param(
         [object]$Meta,
@@ -1095,7 +1271,13 @@ function Get-ClaudeToolMappings {
                 Add-Warning "${ArtifactLabel}: GitHub-specific Copilot tools were mapped to Claude Bash/WebFetch. Install GitHub CLI or a GitHub MCP server if you need closer parity."
             }
             '^io\.github\.upstash/context7/' {
-                Add-Warning "${ArtifactLabel}: Context7 has no native Claude tool equivalent. Install a matching MCP server and override tools.claude in meta.json if you want parity."
+                if (Test-ClaudeContext7Configured) {
+                    if (-not $mapped.Contains('mcp__context7__resolve-library-id')) { $mapped.Add('mcp__context7__resolve-library-id') }
+                    if (-not $mapped.Contains('mcp__context7__get-library-docs')) { $mapped.Add('mcp__context7__get-library-docs') }
+                }
+                else {
+                    Add-Warning "${ArtifactLabel}: Context7 has no native Claude tool equivalent. Install a matching MCP server and override tools.claude in meta.json if you want parity."
+                }
             }
             '^vscode($|/)' {
                 Add-Warning "${ArtifactLabel}: VS Code-only tools are ignored for Claude rendering."
@@ -1112,7 +1294,7 @@ function Get-ClaudeToolMappings {
 function Read-CanonicalMeta {
     param([string]$Path)
 
-    return ConvertFrom-Json (Get-Content -LiteralPath $Path -Raw)
+    return ConvertFrom-JsonWithComments (Get-Content -LiteralPath $Path -Raw)
 }
 
 function ConvertTo-CopilotAgentDocument {
@@ -1139,7 +1321,7 @@ function ConvertTo-CopilotAgentDocument {
         }
     }
 
-    $copilotTools = ConvertTo-StringArray (Get-Prop (Get-Prop $Meta 'tools') 'copilot')
+    $copilotTools = Get-ConfiguredToolsForClient -Meta $Meta -Client $Client
     if ($copilotTools.Count -gt 0) {
         $frontmatter.Add('tools: ' + (Format-YamlInlineArray $copilotTools))
     }
@@ -1183,9 +1365,14 @@ function ConvertTo-ClaudeAgentDocument {
         $frontmatter.Add('model: ' + (Format-YamlScalar $model))
     }
 
-    $claudeTools = Get-ClaudeToolMappings -Meta $Meta -ArtifactLabel (Get-Prop $Meta 'id')
+    $claudeTools = Get-ConfiguredToolsForClient -Meta $Meta -Client 'claude'
     if ($claudeTools.Count -gt 0) {
         $frontmatter.Add('tools: ' + (Format-YamlInlineArray $claudeTools))
+    }
+
+    $memoryScope = Get-ClaudeMemoryScope -Meta $Meta
+    if (-not [string]::IsNullOrWhiteSpace($memoryScope)) {
+        $frontmatter.Add('memory: ' + (Format-YamlScalar $memoryScope))
     }
 
     $copilotMeta = Get-Prop $Meta 'copilot'
@@ -1248,11 +1435,22 @@ function ConvertTo-SkillDocument {
     return New-DocumentContent -FrontmatterLines $frontmatter.ToArray() -Body $Body
 }
 
+function Get-CanonicalMetaPath {
+    param([System.IO.DirectoryInfo]$Directory)
+
+    $jsoncPath = Join-Path $Directory.FullName 'meta.jsonc'
+    if (Test-Path -LiteralPath $jsoncPath) {
+        return $jsoncPath
+    }
+
+    return (Join-Path $Directory.FullName 'meta.json')
+}
+
 function Get-AgentDirectories {
     Get-ChildItem -LiteralPath (Join-Path $aiRoot 'agents') -Directory |
         Where-Object {
             (Test-Path -LiteralPath (Join-Path $_.FullName 'body.md')) -and
-            (Test-Path -LiteralPath (Join-Path $_.FullName 'meta.json'))
+            (Test-Path -LiteralPath (Get-CanonicalMetaPath -Directory $_))
         } |
         Sort-Object Name
 }
@@ -1261,7 +1459,7 @@ function Get-InstructionDirectories {
     Get-ChildItem -LiteralPath (Join-Path $aiRoot 'instructions') -Directory |
         Where-Object {
             (Test-Path -LiteralPath (Join-Path $_.FullName 'body.md')) -and
-            (Test-Path -LiteralPath (Join-Path $_.FullName 'meta.json'))
+            (Test-Path -LiteralPath (Get-CanonicalMetaPath -Directory $_))
         } |
         Sort-Object Name
 }
@@ -1275,7 +1473,7 @@ function Get-SkillDirectories {
 function Get-SkillMeta {
     param([System.IO.DirectoryInfo]$Directory)
 
-    $metaPath = Join-Path $Directory.FullName 'meta.json'
+    $metaPath = Get-CanonicalMetaPath -Directory $Directory
     if (Test-Path -LiteralPath $metaPath) {
         return Read-CanonicalMeta -Path $metaPath
     }
@@ -1339,7 +1537,7 @@ function Install-RenderedSkill {
     $allSucceeded = Write-ManagedFile -Path (Join-Path $targetDirectory 'SKILL.md') -Content $renderedSkill
 
     Get-ChildItem -LiteralPath $SkillDirectory.FullName -Force | Where-Object {
-        $_.Name -notin @('SKILL.md', 'meta.json')
+        $_.Name -notin @('SKILL.md', 'meta.json', 'meta.jsonc')
     } | ForEach-Object {
         $targetPath = Join-Path $targetDirectory $_.Name
         $linkSucceeded = Write-ManagedSymlink -Path $targetPath -Target $_.FullName

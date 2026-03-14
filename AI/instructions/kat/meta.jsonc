@@ -1,0 +1,18 @@
+{
+	"id": "kat",
+	"name": "KAT Shared Instruction",
+	"description": "Shared KAT communication, code, and .NET guidance rendered for Copilot and Claude.",
+	"enabled": {
+		"vscode": true,
+		"copilotCli": true,
+		"claudeInstruction": true,
+		"claudeRule": true,
+		"claudeImport": true
+	},
+	"scope": {
+		"copilot": "**",
+		"claude": [
+			"**"
+		]
+	}
+}
