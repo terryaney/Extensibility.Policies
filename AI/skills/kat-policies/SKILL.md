@@ -37,7 +37,8 @@ Stop processing if Developer Mode is not enabled.
 	"chat.instructionsFilesLocations": {
 		".claude/rules": false,
 		"~/.claude/rules": false,
-		"~/.copilot/instructions": false
+		"~/.copilot/instructions": false,
+    "~/AppData/Roaming/Code/User/instructions": true
 	}
 ```
 

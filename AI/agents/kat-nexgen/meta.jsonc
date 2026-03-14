@@ -12,6 +12,9 @@
 		"copilotCli": "gpt-5.4",
 		"claude": "default"
 	},
+	"publish": {
+		"repositoryRoot": "C:\\BTR\\Camelot\\Websites\\ESS\\Nexgen"
+	},
 	"tools": {
 		// vscode/memory stays on Copilot; Claude uses the explicit memory field below
 		"vscode/memory": {},

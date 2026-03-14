@@ -6,7 +6,7 @@
 		"vscode": true,
 		"copilotCli": true,
 		"claudeInstruction": true,
-		"claudeRule": true,
+		"claudeRule": false,
 		"claudeImport": true
 	},
 	"scope": {

@@ -52,6 +52,59 @@ function Add-DeploymentRecord {
     })
 }
 
+function Get-AgentRepositoryRoot {
+    param([object]$Meta)
+
+    $publish = Get-Prop $Meta 'publish'
+    $repositoryRoot = Get-Prop $publish 'repositoryRoot'
+    if ([string]::IsNullOrWhiteSpace([string]$repositoryRoot)) {
+        return $null
+    }
+
+    return [string]$repositoryRoot
+}
+
+function Get-AgentRepositoryManagedContexts {
+    $contextsByRoot = @{}
+
+    foreach ($agentDir in Get-AgentDirectories) {
+        $meta = Read-CanonicalMeta -Path (Get-CanonicalMetaPath -Directory $agentDir)
+        $repositoryRoot = Get-AgentRepositoryRoot -Meta $meta
+        if ([string]::IsNullOrWhiteSpace($repositoryRoot)) {
+            continue
+        }
+
+        if (-not $contextsByRoot.ContainsKey($repositoryRoot)) {
+            $contextsByRoot[$repositoryRoot] = New-Object System.Collections.Generic.List[string]
+        }
+
+        $enabled = Get-Prop $meta 'enabled'
+        if (ConvertTo-BoolValue (Get-Prop $enabled 'vscode') $true) {
+            $scanRoot = Join-Path $repositoryRoot '.github\agents'
+            if (-not $contextsByRoot[$repositoryRoot].Contains($scanRoot)) {
+                $contextsByRoot[$repositoryRoot].Add($scanRoot)
+            }
+        }
+
+        if (ConvertTo-BoolValue (Get-Prop $enabled 'claude') $true) {
+            $claudeMeta = Get-Prop $meta 'claude'
+            $claudeFolder = if ((Get-Prop $claudeMeta 'target' 'agent') -eq 'command') { 'commands' } else { 'agents' }
+            $scanRoot = Join-Path (Join-Path $repositoryRoot '.claude') $claudeFolder
+            if (-not $contextsByRoot[$repositoryRoot].Contains($scanRoot)) {
+                $contextsByRoot[$repositoryRoot].Add($scanRoot)
+            }
+        }
+    }
+
+    return @($contextsByRoot.Keys | Sort-Object | ForEach-Object {
+        @{
+            Root = $_
+            ScanRoots = @($contextsByRoot[$_])
+            CollapseEmptyToRoot = $_
+        }
+    })
+}
+
 function Invoke-PolicySync {
     New-Item -ItemType Directory -Path 'C:\BTR' -Force | Out-Null
 
@@ -75,12 +128,19 @@ function Invoke-PolicySync {
         @{ Root = $claudeRoot; ScanRoots = @((Join-Path $claudeRoot 'agents'), (Join-Path $claudeRoot 'instructions'), (Join-Path $claudeRoot 'rules'), (Join-Path $claudeRoot 'skills'), (Join-Path $claudeRoot 'commands'), (Join-Path $claudeRoot 'CLAUDE.md')) }
     )
 
+    $managedContexts += @(Get-AgentRepositoryManagedContexts)
+
     if ($terminalRoot) {
         $managedContexts += @{ Root = $terminalRoot; ScanRoots = @($terminalRoot) }
     }
 
     foreach ($context in $managedContexts) {
-        Clear-ManagedRoot -Root $context.Root -ScanRoots $context.ScanRoots -RepositoryRoot $repoRoot
+        $collapseEmptyToRoot = $null
+        if ($context -is [System.Collections.IDictionary] -and $context.Contains('CollapseEmptyToRoot')) {
+            $collapseEmptyToRoot = $context['CollapseEmptyToRoot']
+        }
+
+        Clear-ManagedRoot -Root $context.Root -ScanRoots $context.ScanRoots -RepositoryRoot $repoRoot -CollapseEmptyToRoot $collapseEmptyToRoot
     }
 
     $editorConfigPath = 'C:\BTR\.editorconfig'
@@ -108,12 +168,25 @@ function Invoke-PolicySync {
         $enabled = Get-Prop $meta 'enabled'
         $id = Get-Prop $meta 'id' $agentDir.Name
         $claudeMeta = Get-Prop $meta 'claude'
+        $agentRepositoryRoot = Get-AgentRepositoryRoot -Meta $meta
 
         if (ConvertTo-BoolValue (Get-Prop $enabled 'vscode') $true) {
-            $path = Join-Path (Join-Path $vscodeRoot 'prompts') ($id + '.agent.md')
-            $content = ConvertTo-CopilotAgentDocument -Meta $meta -Body $body -Client 'vscode'
-            $succeeded = Write-ManagedFile -Path $path -Content $content
-            Add-DeploymentRecord -Category 'agent' -Id $id -Target 'vscode' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $path
+            if (-not [string]::IsNullOrWhiteSpace($agentRepositoryRoot) -and -not (Test-Path -LiteralPath $agentRepositoryRoot -PathType Container)) {
+                Add-BlockedPath $agentRepositoryRoot
+                Add-DeploymentRecord -Category 'agent' -Id $id -Target 'vscode' -Status 'blocked' -Path $agentRepositoryRoot -Detail 'repository-root-not-found'
+            }
+            else {
+                $repoTargetedVscodeAgent = -not [string]::IsNullOrWhiteSpace($agentRepositoryRoot)
+                $path = if ([string]::IsNullOrWhiteSpace($agentRepositoryRoot)) {
+                    Join-Path (Join-Path $vscodeRoot 'prompts') ($id + '.agent.md')
+                }
+                else {
+                    Join-Path (Join-Path $agentRepositoryRoot '.github\agents') ($id + '.agent.md')
+                }
+                $content = ConvertTo-CopilotAgentDocument -Meta $meta -Body $body -Client 'vscode'
+                $succeeded = Write-ManagedFile -Path $path -Content $content -ForceOwnedPath $repoTargetedVscodeAgent
+                Add-DeploymentRecord -Category 'agent' -Id $id -Target 'vscode' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $path
+            }
         }
         else {
             Add-DeploymentRecord -Category 'agent' -Id $id -Target 'vscode' -Status 'disabled'
@@ -130,12 +203,24 @@ function Invoke-PolicySync {
         }
 
         if (ConvertTo-BoolValue (Get-Prop $enabled 'claude') $true) {
-            $claudeTarget = Get-Prop $claudeMeta 'target' 'agent'
-            $claudeFolder = if ($claudeTarget -eq 'command') { 'commands' } else { 'agents' }
-            $path = Join-Path (Join-Path $claudeRoot $claudeFolder) ($id + '.md')
-            $content = ConvertTo-ClaudeAgentDocument -Meta $meta -Body $body
-            $succeeded = Write-ManagedFile -Path $path -Content $content
-            Add-DeploymentRecord -Category 'agent' -Id $id -Target 'claude' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $path
+            if (-not [string]::IsNullOrWhiteSpace($agentRepositoryRoot) -and -not (Test-Path -LiteralPath $agentRepositoryRoot -PathType Container)) {
+                Add-BlockedPath $agentRepositoryRoot
+                Add-DeploymentRecord -Category 'agent' -Id $id -Target 'claude' -Status 'blocked' -Path $agentRepositoryRoot -Detail 'repository-root-not-found'
+            }
+            else {
+                $repoTargetedClaudeAgent = -not [string]::IsNullOrWhiteSpace($agentRepositoryRoot)
+                $claudeTarget = Get-Prop $claudeMeta 'target' 'agent'
+                $claudeFolder = if ($claudeTarget -eq 'command') { 'commands' } else { 'agents' }
+                $path = if ([string]::IsNullOrWhiteSpace($agentRepositoryRoot)) {
+                    Join-Path (Join-Path $claudeRoot $claudeFolder) ($id + '.md')
+                }
+                else {
+                    Join-Path (Join-Path (Join-Path $agentRepositoryRoot '.claude') $claudeFolder) ($id + '.md')
+                }
+                $content = ConvertTo-ClaudeAgentDocument -Meta $meta -Body $body
+                $succeeded = Write-ManagedFile -Path $path -Content $content -ForceOwnedPath $repoTargetedClaudeAgent
+                Add-DeploymentRecord -Category 'agent' -Id $id -Target 'claude' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $path
+            }
         }
         else {
             Add-DeploymentRecord -Category 'agent' -Id $id -Target 'claude' -Status 'disabled'
@@ -824,10 +909,6 @@ function Remove-KatManagedPath {
         [string]$RepositoryRoot
     )
 
-    if (-not (Test-Path -LiteralPath $Path)) {
-        return $true
-    }
-
     $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
     if ($null -eq $item) {
         return $true
@@ -900,18 +981,53 @@ function Remove-EmptyDirectories {
     }
 }
 
+function Remove-EmptyAncestors {
+    param(
+        [string]$Path,
+        [string]$StopAt
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path) -or [string]::IsNullOrWhiteSpace($StopAt)) {
+        return
+    }
+
+    $current = $Path
+    while (-not [string]::IsNullOrWhiteSpace($current) -and
+        $current.StartsWith($StopAt, [StringComparison]::OrdinalIgnoreCase) -and
+        $current.Length -gt $StopAt.Length) {
+
+        $item = Get-Item -LiteralPath $current -Force -ErrorAction SilentlyContinue
+        if ($null -ne $item -and $item.PSIsContainer) {
+            $hasChildren = $null -ne (Get-ChildItem -LiteralPath $current -Force -ErrorAction SilentlyContinue | Select-Object -First 1)
+            if ($hasChildren) {
+                break
+            }
+
+            Remove-Item -LiteralPath $current -Force -Confirm:$false -ErrorAction SilentlyContinue
+        }
+
+        $next = Split-Path -Parent $current
+        if ($next -eq $current) {
+            break
+        }
+
+        $current = $next
+    }
+}
+
 function Clear-ManagedRoot {
     param(
         [string]$Root,
         [string[]]$ScanRoots,
-        [string]$RepositoryRoot
+        [string]$RepositoryRoot,
+        [string]$CollapseEmptyToRoot = $null
     )
 
     $pathsToRemove = @(Get-LegacyManagedPaths -ScanRoots $ScanRoots -RepositoryRoot $RepositoryRoot)
     $pathsToRemove |
         Sort-Object Length -Descending -Unique |
         ForEach-Object {
-            if (Test-Path -LiteralPath $_) {
+            if ($null -ne (Get-Item -LiteralPath $_ -Force -ErrorAction SilentlyContinue)) {
                 Remove-Item -LiteralPath $_ -Force -Recurse -Confirm:$false -ErrorAction SilentlyContinue
             }
         }
@@ -922,6 +1038,12 @@ function Clear-ManagedRoot {
     }
 
     Remove-EmptyDirectories -ScanRoots $ScanRoots
+
+    if (-not [string]::IsNullOrWhiteSpace($CollapseEmptyToRoot)) {
+        foreach ($scanRoot in $ScanRoots) {
+            Remove-EmptyAncestors -Path $scanRoot -StopAt $CollapseEmptyToRoot
+        }
+    }
 }
 
 function Write-CreatedByStream {
@@ -950,13 +1072,25 @@ function Set-ManagedReadOnly {
 function Write-ManagedFile {
     param(
         [string]$Path,
-        [string]$Content
+        [string]$Content,
+        [bool]$ForceOwnedPath = $false
     )
 
     New-Directory (Split-Path -Parent $Path)
     if (-not (Remove-KatManagedPath -Path $Path -RepositoryRoot $repoRoot)) {
-        Add-BlockedPath $Path
-        return $false
+        if ($ForceOwnedPath) {
+            try {
+                Remove-Item -LiteralPath $Path -Force -Recurse -Confirm:$false -ErrorAction Stop
+            }
+            catch {
+                Add-BlockedPath $Path
+                return $false
+            }
+        }
+        else {
+            Add-BlockedPath $Path
+            return $false
+        }
     }
 
     Set-Content -LiteralPath $Path -Value $Content -NoNewline
