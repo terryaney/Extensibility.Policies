@@ -21,6 +21,10 @@
 		"agent": {
 			"claude": "Agent"
 		},
+		// edit -> Claude Edit
+		"edit": {
+			"claude": "Edit"
+		},
 		// vscode/memory stays on Copilot; Claude uses the explicit memory field below
 		"vscode/memory": {}
 	},

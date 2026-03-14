@@ -125,6 +125,8 @@ The cleanup rules matter because the renderer is intentionally conservative.
 - Broken managed symlinks are now removed correctly during cleanup.
 - Repo-targeted agent outputs are treated as authoritative current targets for the exact paths derived from current metadata, so they can be replaced even if the KAT marker is temporarily missing.
 - Repo-local cleanup now collapses empty `.github` and `.claude` ancestor folders back toward the configured repository root.
+- If `publish.repositoryRoot` is removed or changed to a different repository, cleanup of the previously targeted repository is manual because that older target path is no longer discoverable from current metadata.
+- Published skill target folders are reused only when any remaining contents are still KAT-managed; if unmanaged content remains, that specific skill publish is blocked until the folder is cleaned up manually.
 
 ### Metadata Reference
 

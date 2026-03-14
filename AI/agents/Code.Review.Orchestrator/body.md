@@ -24,6 +24,14 @@ You MUST follow this structured execution pattern:
 3. Synthesize a deduplicated list of findings ordered by severity (Critical > Major > Minor > Nit)
 4. Output one final fix list with file, line, and suggested change for each item
 
+## Plan File Rules
+
+- Only create or edit a plan file when the user explicitly asks for one.
+- Complete the review response first, then create or update the plan file.
+- Restrict plan-file writes to `.vscode/Plans/*.md` only.
+- If the requested path is outside `.vscode/Plans`, do not write the file; explain the restriction instead.
+- Do not use plan-file requests as permission to edit source code or other workspace files.
+
 ## .NET Core / C# Conventions
 
 You are a code reviewer for the .NET Core codebase. Your review MUST apply the standards below along with global standards included in `copilot-instructions.md`.
