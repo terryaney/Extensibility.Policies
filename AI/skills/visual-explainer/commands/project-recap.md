@@ -1,7 +1,12 @@
 ---
 description: Generate a visual HTML project recap — rebuild mental model of a project's current state, recent decisions, and cognitive debt hotspots
 ---
+<!-- copilot:start -->
+Generate a comprehensive visual project recap as a self-contained HTML page.
+<!-- copilot:end -->
+<!-- claude:start -->
 Load the visual-explainer skill, then generate a comprehensive visual project recap as a self-contained HTML page.
+<!-- claude:end -->
 
 Follow the visual-explainer skill workflow. Read the reference template, CSS patterns, and mermaid theming references before generating. Use a warm editorial or paper/ink aesthetic with muted blues and greens, but vary fonts and palette from previous diagrams.
 

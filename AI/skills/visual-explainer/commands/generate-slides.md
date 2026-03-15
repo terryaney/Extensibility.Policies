@@ -1,7 +1,12 @@
 ---
 description: Generate a stunning magazine-quality slide deck as a self-contained HTML page
 ---
+<!-- copilot:start -->
+Generate a slide deck for: $@
+<!-- copilot:end -->
+<!-- claude:start -->
 Load the visual-explainer skill, then generate a slide deck for: $@
+<!-- claude:end -->
 
 Follow the visual-explainer skill workflow. Read the reference template at `./templates/slide-deck.html` and slide patterns at `./references/slide-patterns.md` before generating. Also read `./references/css-patterns.md` for shared patterns (Mermaid zoom controls, depth tiers, overflow protection) and `./references/libraries.md` for Mermaid theming, Chart.js, and font pairings.
 

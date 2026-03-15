@@ -1,7 +1,12 @@
 ---
 description: Generate a visual HTML implementation plan — detailed feature specification with state machines, code snippets, and edge cases
 ---
+<!-- copilot:start -->
+Generate a comprehensive visual implementation plan for `$@` as a self-contained HTML page.
+<!-- copilot:end -->
+<!-- claude:start -->
 Load the visual-explainer skill, then generate a comprehensive visual implementation plan for `$@` as a self-contained HTML page.
+<!-- claude:end -->
 
 Follow the visual-explainer skill workflow. Read the reference template, CSS patterns, and mermaid theming references before generating. Use an editorial or blueprint aesthetic, but vary fonts and palette from previous diagrams.
 

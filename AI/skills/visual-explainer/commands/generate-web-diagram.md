@@ -1,7 +1,12 @@
 ---
 description: Generate a beautiful standalone HTML diagram and open it in the browser
 ---
+<!-- copilot:start -->
+Generate an HTML diagram for: $@
+<!-- copilot:end -->
+<!-- claude:start -->
 Load the visual-explainer skill, then generate an HTML diagram for: $@
+<!-- claude:end -->
 
 Follow the visual-explainer skill workflow. Read the reference template and CSS patterns before generating. Pick a distinctive aesthetic that fits the content — vary fonts, palette, and layout style from previous diagrams.
 

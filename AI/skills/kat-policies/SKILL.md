@@ -26,19 +26,19 @@ Stop processing if Developer Mode is not enabled.
 
 ```json
 	"chat.agentFilesLocations": {
-		".claude/agents": false,
+		".claude/agents": true,
 		"~/.claude/agents": false,
 		"~/.copilot/agents": false
 	},
 	"chat.agentSkillsLocations": {
-		".claude/skills": false,
+		".claude/skills": true,
 		"~/.claude/skills": false
 	},
 	"chat.instructionsFilesLocations": {
-		".claude/rules": false,
+		".claude/rules": true,
 		"~/.claude/rules": false,
 		"~/.copilot/instructions": false,
-    "~/AppData/Roaming/Code/User/instructions": true
+		"~/AppData/Roaming/Code/User/instructions": true
 	}
 ```
 

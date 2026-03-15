@@ -1,7 +1,12 @@
 ---
 description: Generate a visual HTML plan review — current codebase state vs. proposed implementation plan
 ---
+<!-- copilot:start -->
+Generate a comprehensive visual plan review as a self-contained HTML page, comparing the current codebase against a proposed implementation plan.
+<!-- copilot:end -->
+<!-- claude:start -->
 Load the visual-explainer skill, then generate a comprehensive visual plan review as a self-contained HTML page, comparing the current codebase against a proposed implementation plan.
+<!-- claude:end -->
 
 Follow the visual-explainer skill workflow. Read the reference template, CSS patterns, and mermaid theming references before generating. Use a blueprint/editorial aesthetic with current-state vs. planned-state panels, but vary fonts and palette from previous diagrams.
 

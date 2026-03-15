@@ -6,11 +6,18 @@
 	"compatibility": "Requires a browser to view generated HTML files. Optional surf-cli for AI image generation.",
 	"metadata": {
 		"author": "nicobailon",
-		"version": "0.5.1"
+		"version": "0.5.1",
+		"repository": "https://github.com/nicobailon/visual-explainer",
+		"commit": "61f06e8"
 	},
 	"enabled": {
 		"copilot": true,
 		"claude": true
+	},
+	"copilot": {
+		"excludeCommands": [
+			"share"
+		]
 	},
 	"claude": {
 		"exposeCommands": true
