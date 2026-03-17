@@ -515,6 +515,19 @@ function Publish-Skills {
                 $succeeded = (Install-RenderedSkill -Root $copilotRoot -SkillDefinition $copilotDefinition -Target 'copilot') -and $succeeded
 
                 foreach ($commandDefinition in (Get-CopilotCommandSkillDefinitions -SkillDefinition $definition)) {
+                    $legacyCommandFolderId = [string](Get-Prop $commandDefinition 'LegacyFolderId')
+                    if (-not [string]::IsNullOrWhiteSpace($legacyCommandFolderId) -and
+                        (-not $legacyCommandFolderId.Equals($commandDefinition.Id, [StringComparison]::OrdinalIgnoreCase))) {
+                        $legacyCommandPath = Join-Path (Join-Path $copilotRoot 'skills') $legacyCommandFolderId
+                        if (Test-Path -LiteralPath $legacyCommandPath) {
+                            $legacyRemoved = Remove-KatManagedPath -Path $legacyCommandPath -RepositoryRoot $repoRoot
+                            if (-not $legacyRemoved) {
+                                Add-BlockedPath $legacyCommandPath
+                                $succeeded = $false
+                            }
+                        }
+                    }
+
                     $commandSucceeded = Install-RenderedSkill -Root $copilotRoot -SkillDefinition $commandDefinition -Target 'copilot'
                     $commandArtifactId = [string](Get-Prop $commandDefinition.Meta 'name')
                     if ([string]::IsNullOrWhiteSpace($commandArtifactId)) {
@@ -557,7 +570,7 @@ function Publish-Skills {
                     foreach ($commandFile in $definition.CommandFiles) {
                         $commandName = [System.IO.Path]::GetFileNameWithoutExtension($commandFile.Name)
                         $commandArtifactId = "${id}.$commandName"
-                        $commandPath = Join-Path (Join-Path (Join-Path $claudeRoot 'skills') $id 'commands') $commandFile.Name
+                        $commandPath = Join-Path (Join-Path (Join-Path (Join-Path $claudeRoot 'skills') $id) 'commands') $commandFile.Name
                         $commandSucceeded = $false
 
                         if ($targetSkillSucceeded) {
@@ -1996,8 +2009,8 @@ function Get-CopilotCommandSkillDefinitions {
             continue
         }
 
-        $commandFolderId = $SkillDefinition.Id + '-' + $commandName
         $commandDisplayName = $SkillDefinition.Id + '.' + $commandName
+        $commandFolderId = $commandDisplayName
         $resolvedCommandContent = Resolve-ClientMarkdown -Content (Get-Content -LiteralPath $commandFile.FullName -Raw) -Client 'copilot'
         $commandDocument = Split-MarkdownFrontmatter -Content $resolvedCommandContent
 
@@ -2036,6 +2049,7 @@ function Get-CopilotCommandSkillDefinitions {
                 claude = $false
             }
             Id = $commandFolderId
+            LegacyFolderId = $SkillDefinition.Id + '-' + $commandName
             ClaudeMeta = $null
             CommandFiles = @()
             ExcludedItemNames = @('commands')
@@ -2194,13 +2208,36 @@ function Get-CanonicalMetaPath {
     return (Join-Path $Directory.FullName 'meta.json')
 }
 
+function Test-IsCanonicalAgentDirectory {
+    param([System.IO.DirectoryInfo]$Directory)
+
+    return (Test-Path -LiteralPath (Join-Path $Directory.FullName 'body.md')) -and
+        (Test-Path -LiteralPath (Get-CanonicalMetaPath -Directory $Directory))
+}
+
+function Get-NestedAgentDirectories {
+    param([System.IO.DirectoryInfo]$Directory)
+
+    foreach ($childDirectory in (Get-ChildItem -LiteralPath $Directory.FullName -Directory | Sort-Object Name)) {
+        if (Test-IsCanonicalAgentDirectory -Directory $childDirectory) {
+            $childDirectory
+            continue
+        }
+
+        foreach ($agentDirectory in Get-NestedAgentDirectories -Directory $childDirectory) {
+            $agentDirectory
+        }
+    }
+}
+
 function Get-AgentDirectories {
-    Get-ChildItem -LiteralPath (Join-Path $aiRoot 'agents') -Directory |
-        Where-Object {
-            (Test-Path -LiteralPath (Join-Path $_.FullName 'body.md')) -and
-            (Test-Path -LiteralPath (Get-CanonicalMetaPath -Directory $_))
-        } |
-        Sort-Object Name
+    $agentsRootPath = Join-Path $aiRoot 'agents'
+    if (-not (Test-Path -LiteralPath $agentsRootPath -PathType Container)) {
+        return
+    }
+
+    $agentsRoot = Get-Item -LiteralPath $agentsRootPath
+    Get-NestedAgentDirectories -Directory $agentsRoot
 }
 
 function Get-InstructionDirectories {

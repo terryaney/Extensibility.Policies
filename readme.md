@@ -36,9 +36,10 @@ Canonical AI content lives under `/AI` and is authored once, then rendered into 
 ```text
 /AI/
   agents/
-    <id>/
-      body.md
-      meta.jsonc
+    [group/]*
+      <agent-folder>/
+        body.md
+        meta.jsonc
   instructions/
     <id>/
       body.md
@@ -55,12 +56,14 @@ Canonical AI content lives under `/AI` and is authored once, then rendered into 
 
 ### Agents
 
-Each canonical agent lives in `/AI/agents/<id>/`.
+Each canonical agent lives in a folder somewhere under `/AI/agents/`.
 
 - `body.md` is the shared prompt body.
 - `meta.jsonc` uses the shared metadata shape plus canonical `agents.*` fields such as `agents.model`, `agents.tools`, `agents.userInvocable`, `agents.subAgents`, and `agents.handoffs`.
 - `agents.model` is the VS Code Copilot model display name. Copilot CLI and Claude output map from that canonical value through `AI\skills\kat-policies\scripts\meta.mappings.jsonc`.
 - Canonical metadata is VS Code Copilot-centric. Claude output is rendered from the same canonical fields instead of being authored as a separate source format.
+- Grouping folders are allowed. Policy sync walks `AI\agents` recursively and treats the first folder containing both `body.md` and `meta.jsonc` (or `meta.json`) as the canonical agent directory.
+- Published agent naming still comes from `meta.jsonc.id` (with the existing leaf-folder fallback when `id` is omitted), so source nesting does not change the generated output filename.
 
 ### Instructions
 
@@ -90,7 +93,7 @@ The renderer currently targets these install locations:
 | Skills | n/a | `~/.copilot/skills/<id>/`<sup>2</sup> | `~/.claude/skills/<id>/`<sup>2</sup> |
 
 <sup>1</sup> When `enabled.repositories` includes repo-local targets, the equivalent repo paths are also published for supported clients: `.github/agents/*.agent.md`, `.claude/agents/*.md`, `.github/instructions/*.instructions.md`, and either `.claude/instructions/*.md` plus generated `.claude/CLAUDE.md` imports for global instructions or `.claude/rules/*.md` for path-scoped instructions.
-<sup>2</sup> When `enabled.repositories` includes repo-local targets for a skill, Copilot skill output is published under `.github/skills/<id>/` and Claude skill output under `.claude/skills/<id>/`. If a canonical skill has a `commands/*.md` folder, Copilot child skills are also published under `skills/<parent>-<command>/` with the published skill name `<parent>.<command>`, and Claude command markdown is nested under `skills/<parent>/commands/`.
+<sup>2</sup> When `enabled.repositories` includes repo-local targets for a skill, Copilot skill output is published under `.github/skills/<id>/` and Claude skill output under `.claude/skills/<id>/`. If a canonical skill has a `commands/*.md` folder, Copilot child skills are also published under `skills/<parent>.<command>/`, matching the published skill name `<parent>.<command>`, and Claude command markdown is nested under `skills/<parent>/commands/`.
 
 ## Renderer Notes
 
@@ -178,7 +181,7 @@ Claude-only text.
 
 The renderer strips these markers during publishing so each client receives only its relevant block.
 
-If a canonical skill has a `commands/*.md` folder, Copilot publishing also generates standalone child skill folders named `<parent>-<command>`. Their published skill name is `<parent>.<command>`, so a command can be invoked as `/visual-explainer.diff-review`. Copilot skill installs do not include a `commands` folder.
+If a canonical skill has a `commands/*.md` folder, Copilot publishing also generates standalone child skill folders named `<parent>.<command>`. The folder name matches the published skill name, so a command can be invoked as `/visual-explainer.diff-review`. Copilot skill installs do not include a `commands` folder.
 
 ### Target Schema Notes
 
