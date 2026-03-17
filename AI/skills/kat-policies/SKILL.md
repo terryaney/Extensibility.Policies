@@ -20,7 +20,11 @@ Stop processing if Developer Mode is not enabled.
 
 2.  Attempt to do a `git pull` in the `C:\BTR\Extensibility\Policies` folder to get the latest policy files.  If this fails (e.g., due to merge conflicts, uncommitted changes, etc.), output a warning that the latest files were not pulled from the repository and the reason why the pull failed.
 
-3.  Execute the [script](scripts/update.ps1) to synchronize all target locations with the latest KAT Policy files.
+3.  Execute the following script to synchronize all target locations with the latest KAT Policy files.
+
+```powershell
+& "C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\update.ps1"
+```
 
 4. Try to review the users VS Code User Settings.  VS Code's Copilot tries to read AI primitives in the 'Claude' and 'Copilot CLI' folders too, so the following settings should be applied to eliminate duplicates.
 
