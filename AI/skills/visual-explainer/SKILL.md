@@ -6,7 +6,12 @@ Generate self-contained HTML files for technical diagrams, visualizations, and d
 
 ## Available Commands
 
+<!-- claude:start -->
 Detailed prompt templates in `./commands/`. Invoke each as a namespaced slash command: `/visual-explainer:diff-review`, `/visual-explainer:plan-review`, `/visual-explainer:project-recap`, `/visual-explainer:generate-web-diagram`, `/visual-explainer:generate-visual-plan`, `/visual-explainer:generate-slides`, and `/visual-explainer:fact-check`.
+<!-- claude:end -->
+<!-- copilot:start -->
+Detailed prompt templates are available via skills. Invoke each as a namespaced slash command: `/visual-explainer:diff-review`, `/visual-explainer:plan-review`, `/visual-explainer:project-recap`, `/visual-explainer:generate-web-diagram`, `/visual-explainer:generate-visual-plan`, `/visual-explainer:generate-slides`, and `/visual-explainer:fact-check`.
+<!-- copilot:end -->
 
 | Command | What it does |
 |---------|-------------|
@@ -348,6 +353,7 @@ Every diagram is a single self-contained `.html` file. No external assets except
 </body>
 </html>
 ```
+<!-- claude:start -->
 
 ## Sharing Pages
 
@@ -367,7 +373,6 @@ bash {{skill_dir}}/scripts/share.sh ~/.agent/diagrams/my-diagram.html
 # Live URL:  https://skill-deploy-abc123.vercel.app
 # Claim URL: https://vercel.com/claim-deployment?code=...
 ```
-<!-- claude:end -->
 
 **How it works:**
 1. Copies HTML file to temp directory as `index.html`
@@ -383,6 +388,7 @@ bash {{skill_dir}}/scripts/share.sh ~/.agent/diagrams/my-diagram.html
 - Claim URL lets you transfer the deployment to your Vercel account
 
 See `./commands/share.md` for the share command template.
+<!-- claude:end -->
 
 ## Quality Checks
 

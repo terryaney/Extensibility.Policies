@@ -25,7 +25,7 @@
 - Don't reflexively agree when I question or correct something - evaluate it honestly
   - Explain your reasoning when making suggestions or changes
 - After generating your answer:
-  - Check if it addresses all pionts
+  - Check if it addresses all points
   - Verify no contradictions exist
   - Confirm format matches requirements
   - If any check fails, revise and recheck

@@ -1,28 +1,15 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$devMode = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -Name 'AllowDevelopmentWithoutDevLicense' -ErrorAction SilentlyContinue
-$devModeValue = $null
-if ($null -ne $devMode) {
-    $devModeProperty = $devMode.PSObject.Properties['AllowDevelopmentWithoutDevLicense']
-    if ($null -ne $devModeProperty) {
-        $devModeValue = $devModeProperty.Value
-    }
-}
-
-if ($devModeValue -ne 1) {
-    Write-Warning "Developer Mode is not enabled. Run the following from an elevated PowerShell to enable Developer Mode and allow symlink creation:`n`n" +
-        'reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock /t REG_DWORD /f /v AllowDevelopmentWithoutDevLicense /d 1'
-    exit -1
-}
-
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path
 $aiRoot = Join-Path $repoRoot 'AI'
+$sharedMappingsPath = Join-Path $PSScriptRoot 'meta.mappings.jsonc'
 
 $compatibilityMessages = New-Object System.Collections.Generic.List[string]
 $blockedPaths = New-Object System.Collections.Generic.List[string]
 $deploymentRecords = New-Object System.Collections.Generic.List[object]
 $script:claudeContext7Configured = $null
+$script:sharedMetaMappings = $null
 
 function Add-Warning {
     param([string]$Message)
@@ -47,7 +34,9 @@ function Add-DeploymentRecord {
         [string]$Target,
         [string]$Status,
         [string]$Path = $null,
-        [string]$Detail = $null
+        [string]$Detail = $null,
+        [string]$MatrixValue = $null,
+        [string]$MatrixScoped = $null
     )
 
     $deploymentRecords.Add([pscustomobject]@{
@@ -57,31 +46,32 @@ function Add-DeploymentRecord {
         Status = $Status
         Path = $Path
         Detail = $Detail
+        MatrixValue = $MatrixValue
+        MatrixScoped = $MatrixScoped
     })
 }
 
-function Get-AgentRepositoryRoot {
-    param([object]$Meta)
-
-    $publish = Get-Prop $Meta 'publish'
-    $repositoryRoot = Get-Prop $publish 'repositoryRoot'
-    if ([string]::IsNullOrWhiteSpace([string]$repositoryRoot)) {
-        return $null
+function Get-SharedMetaMappings {
+    if ($null -eq $script:sharedMetaMappings) {
+        $script:sharedMetaMappings = Read-CanonicalMeta -Path $sharedMappingsPath
     }
 
-    return [string]$repositoryRoot
+    return $script:sharedMetaMappings
 }
 
-function Get-InstructionRepositoryRoot {
+function Get-SharedModelMappings {
+    return Get-Prop (Get-SharedMetaMappings) 'models'
+}
+
+function Get-SharedToolMappings {
+    return Get-Prop (Get-SharedMetaMappings) 'tools'
+}
+
+function Get-EnabledRepositories {
     param([object]$Meta)
 
-    $publish = Get-Prop $Meta 'publish'
-    $repositoryRoot = Get-Prop $publish 'repositoryRoot'
-    if ([string]::IsNullOrWhiteSpace([string]$repositoryRoot)) {
-        return $null
-    }
-
-    return [string]$repositoryRoot
+    $enabled = Get-Prop $Meta 'enabled'
+    return (ConvertTo-StringArray (Get-Prop $enabled 'repositories'))
 }
 
 function Get-AgentRepositoryManagedContexts {
@@ -90,21 +80,22 @@ function Get-AgentRepositoryManagedContexts {
     $contextsByRoot = @{}
 
     foreach ($definition in $Definitions) {
-        $repositoryRoot = $definition.RepositoryRoot
-        if ([string]::IsNullOrWhiteSpace($repositoryRoot)) {
-            continue
-        }
+        foreach ($repositoryRoot in $definition.Repositories) {
+            if ([string]::IsNullOrWhiteSpace($repositoryRoot)) {
+                continue
+            }
 
-        if (-not $contextsByRoot.ContainsKey($repositoryRoot)) {
-            $contextsByRoot[$repositoryRoot] = New-Object System.Collections.Generic.List[string]
-        }
+            if (-not $contextsByRoot.ContainsKey($repositoryRoot)) {
+                $contextsByRoot[$repositoryRoot] = New-Object System.Collections.Generic.List[string]
+            }
 
-        foreach ($scanRoot in @(
-                (Join-Path $repositoryRoot '.github\agents'),
-                (Join-Path $repositoryRoot '.claude\agents')))
-        {
-            if (-not $contextsByRoot[$repositoryRoot].Contains($scanRoot)) {
-                $contextsByRoot[$repositoryRoot].Add($scanRoot)
+            foreach ($scanRoot in @(
+                    (Join-Path $repositoryRoot '.github\agents'),
+                    (Join-Path $repositoryRoot '.claude\agents')))
+            {
+                if (-not $contextsByRoot[$repositoryRoot].Contains($scanRoot)) {
+                    $contextsByRoot[$repositoryRoot].Add($scanRoot)
+                }
             }
         }
     }
@@ -124,23 +115,24 @@ function Get-InstructionRepositoryManagedContexts {
     $contextsByRoot = @{}
 
     foreach ($definition in $Definitions) {
-        $repositoryRoot = $definition.RepositoryRoot
-        if ([string]::IsNullOrWhiteSpace($repositoryRoot)) {
-            continue
-        }
+        foreach ($repositoryRoot in $definition.Repositories) {
+            if ([string]::IsNullOrWhiteSpace($repositoryRoot)) {
+                continue
+            }
 
-        if (-not $contextsByRoot.ContainsKey($repositoryRoot)) {
-            $contextsByRoot[$repositoryRoot] = New-Object System.Collections.Generic.List[string]
-        }
+            if (-not $contextsByRoot.ContainsKey($repositoryRoot)) {
+                $contextsByRoot[$repositoryRoot] = New-Object System.Collections.Generic.List[string]
+            }
 
-        foreach ($scanRoot in @(
-                (Join-Path $repositoryRoot '.github\instructions'),
-                (Join-Path $repositoryRoot '.claude\instructions'),
-                (Join-Path $repositoryRoot '.claude\rules'),
-                (Join-Path $repositoryRoot '.claude\CLAUDE.md')))
-        {
-            if (-not $contextsByRoot[$repositoryRoot].Contains($scanRoot)) {
-                $contextsByRoot[$repositoryRoot].Add($scanRoot)
+            foreach ($scanRoot in @(
+                    (Join-Path $repositoryRoot '.github\instructions'),
+                    (Join-Path $repositoryRoot '.claude\instructions'),
+                    (Join-Path $repositoryRoot '.claude\rules'),
+                    (Join-Path $repositoryRoot '.claude\CLAUDE.md')))
+            {
+                if (-not $contextsByRoot[$repositoryRoot].Contains($scanRoot)) {
+                    $contextsByRoot[$repositoryRoot].Add($scanRoot)
+                }
             }
         }
     }
@@ -204,7 +196,7 @@ function Get-ManagedContexts {
 
 function Publish-EditorConfig {
     $editorConfigPath = 'C:\BTR\.editorconfig'
-    $editorConfigSucceeded = Write-ManagedSymlink -Path $editorConfigPath -Target (Join-Path $repoRoot '.editorconfig')
+    $editorConfigSucceeded = Copy-ManagedFile -Path $editorConfigPath -SourcePath (Join-Path $repoRoot '.editorconfig') -ForceOwnedPath $true
     Add-DeploymentRecord -Category 'link' -Id '.editorconfig' -Target 'btr' -Status $(if ($editorConfigSucceeded) { 'ok' } else { 'blocked' }) -Path $editorConfigPath
 }
 
@@ -238,31 +230,40 @@ function Publish-Agents {
     foreach ($definition in $Definitions) {
         $enabled = $definition.Enabled
         $id = $definition.Id
-        $agentRepositoryRoot = $definition.RepositoryRoot
+        $agentRepositories = @($definition.Repositories)
 
-        if (ConvertTo-BoolValue (Get-Prop $enabled 'vscode') $true) {
-            if (-not [string]::IsNullOrWhiteSpace($agentRepositoryRoot) -and -not (Test-Path -LiteralPath $agentRepositoryRoot -PathType Container)) {
-                Add-BlockedPath $agentRepositoryRoot
-                Add-DeploymentRecord -Category 'agent' -Id $id -Target 'vscode' -Status 'blocked' -Path $agentRepositoryRoot -Detail 'repository-root-not-found'
+        if (ConvertTo-BoolValue (Get-Prop $enabled 'copilot') $true) {
+            $content = ConvertTo-CopilotAgentDocument -Meta $definition.Meta -Body $definition.Body -Client 'vscode'
+            $publishTargets = New-Object System.Collections.Generic.List[string]
+            $succeeded = $true
+
+            if ($agentRepositories.Count -eq 0) {
+                $path = Join-Path (Join-Path $Roots.VscodeRoot 'prompts') ($id + '.agent.md')
+                $publishTargets.Add($path)
+                $succeeded = Write-ManagedFile -Path $path -Content $content
             }
             else {
-                $repoTargetedVscodeAgent = -not [string]::IsNullOrWhiteSpace($agentRepositoryRoot)
-                $path = if ([string]::IsNullOrWhiteSpace($agentRepositoryRoot)) {
-                    Join-Path (Join-Path $Roots.VscodeRoot 'prompts') ($id + '.agent.md')
+                foreach ($agentRepositoryRoot in $agentRepositories) {
+                    if (-not (Test-Path -LiteralPath $agentRepositoryRoot -PathType Container)) {
+                        Add-BlockedPath $agentRepositoryRoot
+                        $succeeded = $false
+                        continue
+                    }
+
+                    $path = Join-Path (Join-Path $agentRepositoryRoot '.github\agents') ($id + '.agent.md')
+                    $publishTargets.Add($path)
+                    $succeeded = (Write-ManagedFile -Path $path -Content $content -ForceOwnedPath $true) -and $succeeded
                 }
-                else {
-                    Join-Path (Join-Path $agentRepositoryRoot '.github\agents') ($id + '.agent.md')
-                }
-                $content = ConvertTo-CopilotAgentDocument -Meta $definition.Meta -Body $definition.Body -Client 'vscode'
-                $succeeded = Write-ManagedFile -Path $path -Content $content -ForceOwnedPath $repoTargetedVscodeAgent
-                Add-DeploymentRecord -Category 'agent' -Id $id -Target 'vscode' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $path
             }
+
+            $deploymentPath = if ($publishTargets.Count -gt 0) { $publishTargets -join '; ' } elseif ($agentRepositories.Count -gt 0) { $agentRepositories -join '; ' } else { $null }
+            Add-DeploymentRecord -Category 'agent' -Id $id -Target 'vscode' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $deploymentPath -Detail $(if ($agentRepositories.Count -gt 1) { "paths=$($publishTargets.Count)" } else { $null })
         }
         else {
             Add-DeploymentRecord -Category 'agent' -Id $id -Target 'vscode' -Status 'disabled'
         }
 
-        if (ConvertTo-BoolValue (Get-Prop $enabled 'copilotCli') $true) {
+        if (ConvertTo-BoolValue (Get-Prop $enabled 'copilot') $true) {
             $path = Join-Path (Join-Path $Roots.CopilotRoot 'agents') ($id + '.agent.md')
             $content = ConvertTo-CopilotAgentDocument -Meta $definition.Meta -Body $definition.Body -Client 'copilotCli'
             $succeeded = Write-ManagedFile -Path $path -Content $content
@@ -273,26 +274,36 @@ function Publish-Agents {
         }
 
         if (ConvertTo-BoolValue (Get-Prop $enabled 'claude') $true) {
-            if (-not [string]::IsNullOrWhiteSpace($agentRepositoryRoot) -and -not (Test-Path -LiteralPath $agentRepositoryRoot -PathType Container)) {
-                Add-BlockedPath $agentRepositoryRoot
-                Add-DeploymentRecord -Category 'agent' -Id $id -Target 'claude' -Status 'blocked' -Path $agentRepositoryRoot -Detail 'repository-root-not-found'
+            $claudeTarget = [string](Get-Prop $definition.ClaudeMeta 'target')
+            if (-not [string]::IsNullOrWhiteSpace($claudeTarget)) {
+                Add-Warning "${id}: claude.target is ignored for canonical agent metadata."
+            }
+
+            $content = ConvertTo-ClaudeAgentDocument -Meta $definition.Meta -Body $definition.Body
+            $publishTargets = New-Object System.Collections.Generic.List[string]
+            $succeeded = $true
+
+            if ($agentRepositories.Count -eq 0) {
+                $path = Join-Path (Join-Path $Roots.ClaudeRoot 'agents') ($id + '.md')
+                $publishTargets.Add($path)
+                $succeeded = Write-ManagedFile -Path $path -Content $content
             }
             else {
-                $repoTargetedClaudeAgent = -not [string]::IsNullOrWhiteSpace($agentRepositoryRoot)
-                $claudeTarget = [string](Get-Prop $definition.ClaudeMeta 'target' 'agent')
-                if (-not [string]::IsNullOrWhiteSpace($claudeTarget) -and -not $claudeTarget.Equals('agent', [StringComparison]::OrdinalIgnoreCase)) {
-                    Add-Warning "${id}: claude.target='$claudeTarget' is no longer supported for agents. Publishing to Claude agents instead."
+                foreach ($agentRepositoryRoot in $agentRepositories) {
+                    if (-not (Test-Path -LiteralPath $agentRepositoryRoot -PathType Container)) {
+                        Add-BlockedPath $agentRepositoryRoot
+                        $succeeded = $false
+                        continue
+                    }
+
+                    $path = Join-Path (Join-Path (Join-Path $agentRepositoryRoot '.claude') 'agents') ($id + '.md')
+                    $publishTargets.Add($path)
+                    $succeeded = (Write-ManagedFile -Path $path -Content $content -ForceOwnedPath $true) -and $succeeded
                 }
-                $path = if ([string]::IsNullOrWhiteSpace($agentRepositoryRoot)) {
-                    Join-Path (Join-Path $Roots.ClaudeRoot 'agents') ($id + '.md')
-                }
-                else {
-                    Join-Path (Join-Path (Join-Path $agentRepositoryRoot '.claude') 'agents') ($id + '.md')
-                }
-                $content = ConvertTo-ClaudeAgentDocument -Meta $definition.Meta -Body $definition.Body
-                $succeeded = Write-ManagedFile -Path $path -Content $content -ForceOwnedPath $repoTargetedClaudeAgent
-                Add-DeploymentRecord -Category 'agent' -Id $id -Target 'claude' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $path
             }
+
+            $deploymentPath = if ($publishTargets.Count -gt 0) { $publishTargets -join '; ' } elseif ($agentRepositories.Count -gt 0) { $agentRepositories -join '; ' } else { $null }
+            Add-DeploymentRecord -Category 'agent' -Id $id -Target 'claude' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $deploymentPath -Detail $(if ($agentRepositories.Count -gt 1) { "paths=$($publishTargets.Count)" } else { $null })
         }
         else {
             Add-DeploymentRecord -Category 'agent' -Id $id -Target 'claude' -Status 'disabled'
@@ -306,117 +317,129 @@ function Publish-Instructions {
         [object[]]$Definitions
     )
 
-    $claudeGlobalInstructionIds = New-Object System.Collections.Generic.List[string]
+    $claudeInstructionTargets = New-Object System.Collections.Generic.List[object]
 
     foreach ($definition in $Definitions) {
         $enabled = $definition.Enabled
         $id = $definition.Id
-        $instructionRepositoryRoot = $definition.RepositoryRoot
+        $instructionRepositories = @($definition.Repositories)
+        $instructionScope = @(Get-InstructionScope -Meta $definition.Meta)
+        $isClaudeGlobalInstruction = $instructionScope.Count -eq 0
+        $instructionMatrixValue = if ($instructionRepositories.Count -gt 0) { 'repo' } else { 'global' }
+        $instructionScopedValue = if ($instructionScope.Count -gt 0) { 'yes' } else { 'no' }
 
-        if (ConvertTo-BoolValue (Get-Prop $enabled 'vscode') $true) {
-            if (-not [string]::IsNullOrWhiteSpace($instructionRepositoryRoot) -and -not (Test-Path -LiteralPath $instructionRepositoryRoot -PathType Container)) {
-                Add-BlockedPath $instructionRepositoryRoot
-                Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'vscode' -Status 'blocked' -Path $instructionRepositoryRoot -Detail 'repository-root-not-found'
-            }
-            else {
-                $repoTargetedVscodeInstruction = -not [string]::IsNullOrWhiteSpace($instructionRepositoryRoot)
-                $path = if ([string]::IsNullOrWhiteSpace($instructionRepositoryRoot)) {
-                    Join-Path (Join-Path $Roots.VscodeRoot 'instructions') ($id + '.instructions.md')
-                }
-                else {
-                    Join-Path (Join-Path $instructionRepositoryRoot '.github\instructions') ($id + '.instructions.md')
-                }
-                $content = ConvertTo-CopilotInstructionDocument -Meta $definition.Meta -Body $definition.Body
-                $succeeded = Write-ManagedFile -Path $path -Content $content -ForceOwnedPath $repoTargetedVscodeInstruction
-                Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'vscode' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $path
-            }
-        }
-        else {
-            Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'vscode' -Status 'disabled'
-        }
-
-        if (ConvertTo-BoolValue (Get-Prop $enabled 'copilotCli') $true) {
-            $path = Join-Path (Join-Path $Roots.CopilotRoot 'instructions') ($id + '.instructions.md')
+        if (ConvertTo-BoolValue (Get-Prop $enabled 'copilot') $true) {
             $content = ConvertTo-CopilotInstructionDocument -Meta $definition.Meta -Body $definition.Body
-            $succeeded = Write-ManagedFile -Path $path -Content $content
-            Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'copilotCli' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $path
-        }
-        else {
-            Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'copilotCli' -Status 'disabled'
-        }
+            $publishTargets = New-Object System.Collections.Generic.List[string]
+            $succeeded = $true
 
-        $hasClaudeGlobalInstruction = $null -ne (Get-Prop $enabled 'claudeGlobalInstruction')
-        if ($hasClaudeGlobalInstruction) {
-            $claudeGlobalInstructionEnabled = ConvertTo-BoolValue (Get-Prop $enabled 'claudeGlobalInstruction') $true
-        }
-        else {
-            $legacyClaudeInstructionEnabled = ConvertTo-BoolValue (Get-Prop $enabled 'claudeInstruction') $true
-            $legacyClaudeImportEnabled = ConvertTo-BoolValue (Get-Prop $enabled 'claudeImport') $true
-            $claudeGlobalInstructionEnabled = $legacyClaudeInstructionEnabled -and $legacyClaudeImportEnabled
-        }
-
-        $hasClaudePathInstruction = $null -ne (Get-Prop $enabled 'claudePathInstruction')
-        if ($hasClaudePathInstruction) {
-            $claudePathInstructionEnabled = ConvertTo-BoolValue (Get-Prop $enabled 'claudePathInstruction') $false
-        }
-        else {
-            $claudePathInstructionEnabled = ConvertTo-BoolValue (Get-Prop $enabled 'claudeRule') $false
-        }
-
-        if ($claudeGlobalInstructionEnabled -and $claudePathInstructionEnabled) {
-            Add-Warning "${id}: Both claudeGlobalInstruction and claudePathInstruction are enabled. Publishing only the path-scoped rule."
-            $claudeGlobalInstructionEnabled = $false
-        }
-
-        if ($claudeGlobalInstructionEnabled) {
-            if (-not [string]::IsNullOrWhiteSpace($instructionRepositoryRoot) -and -not (Test-Path -LiteralPath $instructionRepositoryRoot -PathType Container)) {
-                Add-BlockedPath $instructionRepositoryRoot
-                Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'claudeGlobalInstruction' -Status 'blocked' -Path $instructionRepositoryRoot -Detail 'repository-root-not-found'
+            if ($instructionRepositories.Count -eq 0) {
+                $path = Join-Path (Join-Path $Roots.VscodeRoot 'instructions') ($id + '.instructions.md')
+                $publishTargets.Add($path)
+                $succeeded = Write-ManagedFile -Path $path -Content $content
             }
             else {
-                $repoTargetedClaudeGlobalInstruction = -not [string]::IsNullOrWhiteSpace($instructionRepositoryRoot)
-                $path = if ([string]::IsNullOrWhiteSpace($instructionRepositoryRoot)) {
-                    Join-Path (Join-Path $Roots.ClaudeRoot 'instructions') ($id + '.md')
-                }
-                else {
-                    Join-Path (Join-Path $instructionRepositoryRoot '.claude\instructions') ($id + '.md')
-                }
-                $succeeded = Write-ManagedFile -Path $path -Content $definition.Body -ForceOwnedPath $repoTargetedClaudeGlobalInstruction
-                Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'claudeGlobalInstruction' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $path
-                if ($succeeded) {
-                    $claudeGlobalInstructionIds.Add($id)
+                foreach ($instructionRepositoryRoot in $instructionRepositories) {
+                    if (-not (Test-Path -LiteralPath $instructionRepositoryRoot -PathType Container)) {
+                        Add-BlockedPath $instructionRepositoryRoot
+                        $succeeded = $false
+                        continue
+                    }
+
+                    $path = Join-Path (Join-Path $instructionRepositoryRoot '.github\instructions') ($id + '.instructions.md')
+                    $publishTargets.Add($path)
+                    $succeeded = (Write-ManagedFile -Path $path -Content $content -ForceOwnedPath $true) -and $succeeded
                 }
             }
+
+            $deploymentPath = if ($publishTargets.Count -gt 0) { $publishTargets -join '; ' } elseif ($instructionRepositories.Count -gt 0) { $instructionRepositories -join '; ' } else { $null }
+            Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'vscode' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $deploymentPath -Detail $(if ($instructionRepositories.Count -gt 1) { "paths=$($publishTargets.Count)" } else { $null }) -MatrixValue $instructionMatrixValue -MatrixScoped $instructionScopedValue
         }
         else {
-            Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'claudeGlobalInstruction' -Status 'disabled'
+            Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'vscode' -Status 'disabled' -MatrixValue 'off' -MatrixScoped $instructionScopedValue
         }
 
-        if ($claudePathInstructionEnabled) {
-            if (-not [string]::IsNullOrWhiteSpace($instructionRepositoryRoot) -and -not (Test-Path -LiteralPath $instructionRepositoryRoot -PathType Container)) {
-                Add-BlockedPath $instructionRepositoryRoot
-                Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'claudePathInstruction' -Status 'blocked' -Path $instructionRepositoryRoot -Detail 'repository-root-not-found'
+        if (ConvertTo-BoolValue (Get-Prop $enabled 'copilot') $true) {
+            if ($instructionRepositories.Count -gt 0) {
+                Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'copilotCli' -Status 'skipped' -Detail 'repo-scoped-copilot-cli-not-supported' -MatrixValue 'repo' -MatrixScoped $instructionScopedValue
             }
             else {
-                $repoTargetedClaudePathInstruction = -not [string]::IsNullOrWhiteSpace($instructionRepositoryRoot)
-                $path = if ([string]::IsNullOrWhiteSpace($instructionRepositoryRoot)) {
-                    Join-Path (Join-Path $Roots.ClaudeRoot 'rules') ($id + '.md')
-                }
-                else {
-                    Join-Path (Join-Path $instructionRepositoryRoot '.claude\rules') ($id + '.md')
-                }
-                $content = ConvertTo-ClaudeRuleDocument -Meta $definition.Meta -Body $definition.Body
-                $succeeded = Write-ManagedFile -Path $path -Content $content -ForceOwnedPath $repoTargetedClaudePathInstruction
-                Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'claudePathInstruction' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $path
+                $path = Join-Path (Join-Path $Roots.CopilotRoot 'instructions') ($id + '.instructions.md')
+                $content = ConvertTo-CopilotInstructionDocument -Meta $definition.Meta -Body $definition.Body
+                $succeeded = Write-ManagedFile -Path $path -Content $content
+                Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'copilotCli' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $path -MatrixValue 'global' -MatrixScoped $instructionScopedValue
             }
         }
         else {
-            Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'claudePathInstruction' -Status 'disabled'
+            Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'copilotCli' -Status 'disabled' -MatrixValue 'off' -MatrixScoped $instructionScopedValue
+        }
+
+        if (ConvertTo-BoolValue (Get-Prop $enabled 'claude') $true) {
+            $publishTargets = New-Object System.Collections.Generic.List[string]
+            $succeeded = $true
+
+            if ($instructionRepositories.Count -eq 0) {
+                if ($isClaudeGlobalInstruction) {
+                    $path = Join-Path (Join-Path $Roots.ClaudeRoot 'instructions') ($id + '.md')
+                    $publishTargets.Add($path)
+                    $succeeded = Write-ManagedFile -Path $path -Content $definition.Body
+                    if ($succeeded) {
+                        $claudeInstructionTargets.Add([pscustomobject]@{
+                                Id = $id
+                                Root = $Roots.ClaudeRoot
+                            })
+                    }
+                }
+                else {
+                    $path = Join-Path (Join-Path $Roots.ClaudeRoot 'rules') ($id + '.md')
+                    $publishTargets.Add($path)
+                    $content = ConvertTo-ClaudeRuleDocument -Meta $definition.Meta -Body $definition.Body
+                    $succeeded = Write-ManagedFile -Path $path -Content $content
+                }
+            }
+            else {
+                foreach ($instructionRepositoryRoot in $instructionRepositories) {
+                    if (-not (Test-Path -LiteralPath $instructionRepositoryRoot -PathType Container)) {
+                        Add-BlockedPath $instructionRepositoryRoot
+                        $succeeded = $false
+                        continue
+                    }
+
+                    if ($isClaudeGlobalInstruction) {
+                        $path = Join-Path (Join-Path $instructionRepositoryRoot '.claude\instructions') ($id + '.md')
+                        $publishTargets.Add($path)
+                        $targetSucceeded = Write-ManagedFile -Path $path -Content $definition.Body -ForceOwnedPath $true
+                        if ($targetSucceeded) {
+                            $claudeInstructionTargets.Add([pscustomobject]@{
+                                    Id = $id
+                                    Root = (Join-Path $instructionRepositoryRoot '.claude')
+                                })
+                        }
+                    }
+                    else {
+                        $path = Join-Path (Join-Path $instructionRepositoryRoot '.claude\rules') ($id + '.md')
+                        $publishTargets.Add($path)
+                        $content = ConvertTo-ClaudeRuleDocument -Meta $definition.Meta -Body $definition.Body
+                        $targetSucceeded = Write-ManagedFile -Path $path -Content $content -ForceOwnedPath $true
+                    }
+
+                    $succeeded = $targetSucceeded -and $succeeded
+                }
+            }
+
+            $targetName = if ($isClaudeGlobalInstruction) { 'claudeGlobalInstruction' } else { 'claudePathInstruction' }
+            $deploymentPath = if ($publishTargets.Count -gt 0) { $publishTargets -join '; ' } elseif ($instructionRepositories.Count -gt 0) { $instructionRepositories -join '; ' } else { $null }
+            Add-DeploymentRecord -Category 'instruction' -Id $id -Target $targetName -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $deploymentPath -Detail $(if ($instructionRepositories.Count -gt 1) { "paths=$($publishTargets.Count)" } else { $null }) -MatrixValue $instructionMatrixValue -MatrixScoped $instructionScopedValue
+            Add-DeploymentRecord -Category 'instruction' -Id $id -Target $(if ($isClaudeGlobalInstruction) { 'claudePathInstruction' } else { 'claudeGlobalInstruction' }) -Status 'disabled' -MatrixValue 'off' -MatrixScoped $instructionScopedValue
+        }
+        else {
+            Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'claudeGlobalInstruction' -Status 'disabled' -MatrixValue 'off' -MatrixScoped $instructionScopedValue
+            Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'claudePathInstruction' -Status 'disabled' -MatrixValue 'off' -MatrixScoped $instructionScopedValue
         }
     }
 
     return [pscustomobject]@{
-        ClaudeGlobalInstructionIds = @($claudeGlobalInstructionIds.ToArray())
+        ClaudeInstructionTargets = @($claudeInstructionTargets.ToArray())
     }
 }
 
@@ -437,7 +460,11 @@ function Publish-Skills {
 
             foreach ($commandDefinition in (Get-CopilotCommandSkillDefinitions -SkillDefinition $definition)) {
                 $commandSucceeded = Install-RenderedSkill -Root $Roots.CopilotRoot -SkillDefinition $commandDefinition -Target 'copilot'
-                Add-DeploymentRecord -Category 'skill' -Id $commandDefinition.Id -Target 'copilot' -Status $(if ($commandSucceeded) { 'ok' } else { 'blocked' }) -Path (Join-Path (Join-Path $Roots.CopilotRoot 'skills') $commandDefinition.Id)
+                $commandArtifactId = [string](Get-Prop $commandDefinition.Meta 'name')
+                if ([string]::IsNullOrWhiteSpace($commandArtifactId)) {
+                    $commandArtifactId = $commandDefinition.Id
+                }
+                Add-DeploymentRecord -Category 'skill' -Id $commandArtifactId -Target 'copilot' -Status $(if ($commandSucceeded) { 'ok' } else { 'blocked' }) -Path (Join-Path (Join-Path $Roots.CopilotRoot 'skills') $commandDefinition.Id)
             }
         }
         else {
@@ -452,6 +479,8 @@ function Publish-Skills {
 
             if ($definition.CommandFiles.Count -gt 0) {
                 foreach ($commandFile in $definition.CommandFiles) {
+                    $commandName = [System.IO.Path]::GetFileNameWithoutExtension($commandFile.Name)
+                    $commandArtifactId = "${id}:$commandName"
                     $commandPath = Join-Path (Join-Path (Join-Path $Roots.ClaudeRoot 'skills') $id 'commands') $commandFile.Name
                     $commandSucceeded = $false
 
@@ -461,7 +490,7 @@ function Publish-Skills {
                     }
 
                     $commandsSucceeded = $commandsSucceeded -and $commandSucceeded
-                    Add-DeploymentRecord -Category 'skill' -Id ('ClaudeCommand/' + $commandFile.Name) -Target 'claude' -Status $(if ($commandSucceeded) { 'ok' } else { 'blocked' }) -Path $commandPath -Detail $(if ($skillSucceeded) { $null } else { 'skill-publish-failed' })
+                    Add-DeploymentRecord -Category 'skill' -Id $commandArtifactId -Target 'claude' -Status $(if ($commandSucceeded) { 'ok' } else { 'blocked' }) -Path $commandPath -Detail $(if ($skillSucceeded) { $null } else { 'skill-publish-failed' })
                 }
 
                 if (-not $commandsSucceeded) {
@@ -491,23 +520,19 @@ function Publish-ClaudeDocument {
     }
 
     $claudeImportsByRoot = @{}
-    foreach ($instructionId in $InstructionPublishResult.ClaudeGlobalInstructionIds) {
-        $definition = $definitionsById[$instructionId]
+    foreach ($instructionTarget in $InstructionPublishResult.ClaudeInstructionTargets) {
+        $definition = $definitionsById[$instructionTarget.Id]
         if ($null -eq $definition) {
             continue
         }
 
-        $targetRoot = $Roots.ClaudeRoot
-        $repositoryRoot = $definition.RepositoryRoot
-        if (-not [string]::IsNullOrWhiteSpace($repositoryRoot)) {
-            $targetRoot = Join-Path $repositoryRoot '.claude'
-        }
+        $targetRoot = [string]$instructionTarget.Root
 
         if (-not $claudeImportsByRoot.ContainsKey($targetRoot)) {
             $claudeImportsByRoot[$targetRoot] = New-Object System.Collections.Generic.List[string]
         }
 
-        $claudeImportsByRoot[$targetRoot].Add($instructionId)
+        $claudeImportsByRoot[$targetRoot].Add($instructionTarget.Id)
     }
 
     foreach ($targetRoot in ($claudeImportsByRoot.Keys | Sort-Object)) {
@@ -792,13 +817,8 @@ function Write-DeploymentMatrix {
         vscode = 'vscode'
         copilotCli = 'cli'
         claude = 'claude'
-        claudeGlobalInstruction = 'cGlobal'
-        claudePathInstruction = 'cPath'
         copilot = 'copilot'
-        btr = 'btr'
-        terminal = 'terminal'
-        claudeCommand = 'cCmd'
-        claudeDoc = 'claudeDoc'
+        status = 'status'
     }
     $statusLabels = @{
         ok = 'ok'
@@ -808,9 +828,109 @@ function Write-DeploymentMatrix {
     }
     $targetOrder = @{
         agent = @('vscode', 'copilotCli', 'claude')
-        instruction = @('vscode', 'copilotCli', 'claudeGlobalInstruction', 'claudePathInstruction')
+        instruction = @('vscode', 'copilotCli', 'claude')
         skill = @('copilot', 'claude')
-        link = @('btr', 'terminal', 'claudeCommand', 'claudeDoc')
+        link = @('status')
+    }
+
+    function Get-DeploymentCellValue {
+        param(
+            [object]$Record,
+            [hashtable]$Labels
+        )
+
+        if ($null -eq $Record) {
+            return '--'
+        }
+
+        $status = $Labels[$record.Status]
+        if ([string]::IsNullOrWhiteSpace($status)) {
+            $status = $record.Status
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($record.Detail) -and $record.Status -ne 'ok') {
+            $status = "$status($($record.Detail))"
+        }
+
+        return $status
+    }
+
+    function Get-InstructionMatrixValue {
+        param(
+            [object[]]$Records,
+            [string]$Target
+        )
+
+        $record = $null
+        if ($Target -eq 'claude') {
+            $record = @($Records | Where-Object { $_.Target -in @('claudeGlobalInstruction', 'claudePathInstruction') -and $_.Status -ne 'disabled' } | Select-Object -First 1)
+            if ($record.Count -eq 0) {
+                $record = @($Records | Where-Object { $_.Target -in @('claudeGlobalInstruction', 'claudePathInstruction') } | Select-Object -First 1)
+            }
+        }
+        else {
+            $record = @($Records | Where-Object Target -eq $Target | Select-Object -First 1)
+        }
+
+        if ($record.Count -eq 0) {
+            return '--'
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace([string]$record[0].MatrixValue)) {
+            return [string]$record[0].MatrixValue
+        }
+
+        return $(if ($record[0].Status -eq 'disabled') { 'off' } else { '--' })
+    }
+
+    function Get-InstructionScopedValue {
+        param([object[]]$Records)
+
+        $record = @($Records | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_.MatrixScoped) } | Select-Object -First 1)
+        if ($record.Count -eq 0) {
+            return '--'
+        }
+
+        return [string]$record[0].MatrixScoped
+    }
+
+    function Get-InstructionArtifactWidth {
+        param([object[]]$Groups)
+
+        $longestArtifactLength = 0
+        foreach ($group in $Groups) {
+            if ($group.Name.Length -gt $longestArtifactLength) {
+                $longestArtifactLength = $group.Name.Length
+            }
+        }
+
+        return [Math]::Max('artifact'.Length, $longestArtifactLength + 2)
+    }
+
+    function Get-LinkGroupStatusValue {
+        param([object[]]$Records)
+
+        $blockedRecord = @($Records | Where-Object Status -eq 'blocked' | Select-Object -First 1)
+        if ($blockedRecord.Count -gt 0) {
+            return Get-DeploymentCellValue -Record $blockedRecord[0] -Labels $statusLabels
+        }
+
+        $skippedRecord = @($Records | Where-Object Status -eq 'skipped' | Select-Object -First 1)
+        if ($skippedRecord.Count -gt 0) {
+            return Get-DeploymentCellValue -Record $skippedRecord[0] -Labels $statusLabels
+        }
+
+        $disabledRecord = @($Records | Where-Object Status -eq 'disabled' | Select-Object -First 1)
+        if ($disabledRecord.Count -gt 0 -and $Records.Count -eq $disabledRecord.Count) {
+            return Get-DeploymentCellValue -Record $disabledRecord[0] -Labels $statusLabels
+        }
+
+        $okRecord = @($Records | Where-Object Status -eq 'ok' | Select-Object -First 1)
+        if ($okRecord.Count -gt 0) {
+            return Get-DeploymentCellValue -Record $okRecord[0] -Labels $statusLabels
+        }
+
+        return Get-DeploymentCellValue -Record ($Records | Select-Object -First 1) -Labels $statusLabels
     }
 
     Write-Host '--- Deployment Matrix ---' -ForegroundColor Cyan
@@ -829,42 +949,62 @@ function Write-DeploymentMatrix {
 
         $groups = $records | Group-Object Id | Sort-Object Name
         $headers = @('artifact') + @($targetOrder[$category] | ForEach-Object { $targetLabels[$_] })
-        $rows = foreach ($group in $groups) {
-            $values = @($group.Name)
-            foreach ($target in $targetOrder[$category]) {
-                $record = $group.Group | Where-Object Target -eq $target | Select-Object -First 1
-                if ($null -eq $record) {
-                    $values += '--'
-                    continue
-                }
-
-                $status = $statusLabels[$record.Status]
-                if ([string]::IsNullOrWhiteSpace($status)) {
-                    $status = $record.Status
-                }
-
-                if (-not [string]::IsNullOrWhiteSpace($record.Detail) -and $record.Status -ne 'ok') {
-                    $status = "$status($($record.Detail))"
-                }
-
-                $values += $status
-            }
-
-            [pscustomobject]@{
-                Cells = $values
-            }
-        }
-
+        $rows = @()
         $fixedWidths = @(40)
         $alignments = @('left')
-        foreach ($target in $targetOrder[$category]) {
-            $fixedWidths += 12
-            $alignments += 'status'
-        }
-
         $headerAlignments = @('left')
-        foreach ($target in $targetOrder[$category]) {
-            $headerAlignments += 'center'
+
+        switch ($category) {
+            'instruction' {
+                $headers = @('artifact', 'vscode', 'cli', 'claude', 'scoped')
+                $rows = foreach ($group in $groups) {
+                    [pscustomobject]@{
+                        Cells = @(
+                            $group.Name
+                            (Get-InstructionMatrixValue -Records $group.Group -Target 'vscode')
+                            (Get-InstructionMatrixValue -Records $group.Group -Target 'copilotCli')
+                            (Get-InstructionMatrixValue -Records $group.Group -Target 'claude')
+                            (Get-InstructionScopedValue -Records $group.Group)
+                        )
+                    }
+                }
+                $fixedWidths = @((Get-InstructionArtifactWidth -Groups $groups), 8, 8, 8, 8)
+                $alignments = @('left', 'status', 'status', 'status', 'status')
+                $headerAlignments = @('left', 'center', 'center', 'center', 'center')
+            }
+            'link' {
+                $headers = @('artifact', 'status')
+                $rows = foreach ($group in $groups) {
+                    [pscustomobject]@{
+                        Cells = @(
+                            $group.Name
+                            (Get-LinkGroupStatusValue -Records $group.Group)
+                        )
+                    }
+                }
+                $fixedWidths = @(40, 24)
+                $alignments = @('left', 'status')
+                $headerAlignments = @('left', 'center')
+            }
+            default {
+                $rows = foreach ($group in $groups) {
+                    $values = @($group.Name)
+                    foreach ($target in $targetOrder[$category]) {
+                        $record = $group.Group | Where-Object Target -eq $target | Select-Object -First 1
+                        $values += (Get-DeploymentCellValue -Record $record -Labels $statusLabels)
+                    }
+
+                    [pscustomobject]@{
+                        Cells = $values
+                    }
+                }
+
+                foreach ($target in $targetOrder[$category]) {
+                    $fixedWidths += 12
+                    $alignments += 'status'
+                    $headerAlignments += 'center'
+                }
+            }
         }
 
         Write-AsciiTable -Title $categoryLabels[$category] -Headers $headers -Rows $rows -Color 'Cyan' -FixedWidths $fixedWidths -Alignments $alignments -HeaderAlignments $headerAlignments
@@ -1316,22 +1456,6 @@ function Write-ManagedFile {
     return $true
 }
 
-function Write-ManagedSymlink {
-    param(
-        [string]$Path,
-        [string]$Target
-    )
-
-    New-Directory (Split-Path -Parent $Path)
-    if (-not (Remove-KatManagedPath -Path $Path -RepositoryRoot $repoRoot)) {
-        Add-BlockedPath $Path
-        return $false
-    }
-
-    New-Item -ItemType SymbolicLink -Path $Path -Target $Target -Force | Out-Null
-    return $true
-}
-
 function Copy-ManagedFile {
     param(
         [string]$Path,
@@ -1480,14 +1604,92 @@ function ConvertFrom-JsonWithComments {
     return ConvertFrom-Json $builder.ToString()
 }
 
-function Test-LegacyToolConfiguration {
-    param([object]$Tools)
+function Get-ConfiguredCanonicalTools {
+    param([object]$Meta)
 
-    if ($null -eq $Tools) {
-        return $false
+    $agentsMeta = Get-Prop $Meta 'agents'
+    return (ConvertTo-StringArray (Get-Prop $agentsMeta 'tools'))
+}
+
+function Resolve-ModelForClient {
+    param(
+        [object]$Meta,
+        [string]$Client
+    )
+
+    $agentsMeta = Get-Prop $Meta 'agents'
+    if ($null -eq $agentsMeta) {
+        return $null
     }
 
-    return ($null -ne $Tools.PSObject.Properties['copilot']) -or ($null -ne $Tools.PSObject.Properties['claude'])
+    $canonicalModel = [string](Get-Prop $agentsMeta 'model')
+    if ([string]::IsNullOrWhiteSpace($canonicalModel)) {
+        return $null
+    }
+
+    if ($Client -eq 'vscode') {
+        return $canonicalModel
+    }
+
+    $mappedModels = Get-SharedModelMappings
+    $mappedModel = Get-Prop (Get-Prop $mappedModels $canonicalModel) $Client
+    if ([string]::IsNullOrWhiteSpace([string]$mappedModel)) {
+        return $null
+    }
+
+    return [string]$mappedModel
+}
+
+function Resolve-ToolMappingForClient {
+    param(
+        [string]$ToolId,
+        [string]$Client
+    )
+
+    $toolMappings = Get-SharedToolMappings
+    if ($null -eq $toolMappings) {
+        return [pscustomobject]@{
+            Found = $false
+            Values = @()
+        }
+    }
+
+    $mapping = Get-Prop $toolMappings $ToolId
+    if ($null -eq $mapping) {
+        foreach ($mappingProperty in @($toolMappings.PSObject.Properties | Sort-Object { $_.Name.Length } -Descending)) {
+            if ($ToolId -like $mappingProperty.Name) {
+                $mapping = $mappingProperty.Value
+                break
+            }
+        }
+    }
+
+    if ($null -eq $mapping) {
+        return [pscustomobject]@{
+            Found = $false
+            Values = @()
+        }
+    }
+
+    $clientMapping = Get-Prop $mapping $Client
+    if ($null -eq $clientMapping) {
+        return [pscustomobject]@{
+            Found = $false
+            Values = @()
+        }
+    }
+
+    if ($clientMapping -is [bool]) {
+        return [pscustomobject]@{
+            Found = $true
+            Values = @()
+        }
+    }
+
+    return [pscustomobject]@{
+        Found = $true
+        Values = @(ConvertTo-StringArray $clientMapping)
+    }
 }
 
 function Get-ConfiguredToolsForClient {
@@ -1496,52 +1698,38 @@ function Get-ConfiguredToolsForClient {
         [string]$Client
     )
 
-    $tools = Get-Prop $Meta 'tools'
-    if ($null -eq $tools) {
-        return ,@()
-    }
-
-    if (Test-LegacyToolConfiguration -Tools $tools) {
-        switch ($Client) {
-            'vscode' {
-                return ,(ConvertTo-StringArray (Get-Prop $tools 'copilot'))
-            }
-            'copilotCli' {
-                return ,(ConvertTo-StringArray (Get-Prop $tools 'copilot'))
-            }
-            'claude' {
-                return ,(Get-ClaudeToolMappings -Meta $Meta -ArtifactLabel (Get-Prop $Meta 'id'))
-            }
-            default {
-                return ,@()
-            }
-        }
-    }
-
     $resolvedTools = New-Object System.Collections.Generic.List[string]
-    foreach ($toolProperty in @($tools.PSObject.Properties)) {
-        $toolName = $toolProperty.Name
-        $definition = $toolProperty.Value
-        $hasClientProperty = $false
-        $mappedValue = $null
-
-        if ($null -ne $definition) {
-            $clientProperty = $definition.PSObject.Properties[$Client]
-            if ($null -ne $clientProperty) {
-                $hasClientProperty = $true
-                $mappedValue = $clientProperty.Value
-            }
+    $seenTools = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($toolId in (Get-ConfiguredCanonicalTools -Meta $Meta)) {
+        $mapping = Resolve-ToolMappingForClient -ToolId $toolId -Client $Client
+        $toolValues = if ($mapping.Found) {
+            @($mapping.Values)
         }
-
-        if ($Client -eq 'claude') {
-            $toolValues = if ($hasClientProperty) { ConvertTo-StringArray $mappedValue } else { @() }
+        elseif ($Client -eq 'claude') {
+            Add-Warning "$(Get-Prop $Meta 'id'): No Claude tool mapping defined for canonical tool '$toolId'."
+            @()
         }
         else {
-            $toolValues = if ($hasClientProperty) { ConvertTo-StringArray $mappedValue } else { @($toolName) }
+            @($toolId)
         }
 
-        foreach ($toolValue in $toolValues) {
-            if (-not $resolvedTools.Contains($toolValue)) {
+        if ($Client -eq 'claude' -and $toolId -like 'io.github.upstash/context7/*') {
+            if (-not (Test-ClaudeContext7Configured)) {
+                Add-Warning "$(Get-Prop $Meta 'id'): Context7 has no native Claude tool equivalent. Install a matching MCP server if you want parity."
+                $toolValues = @()
+            }
+        }
+
+        foreach ($toolValue in (ConvertTo-StringArray $toolValues)) {
+            if ([string]::IsNullOrWhiteSpace($toolValue)) {
+                continue
+            }
+
+            if ($Client -eq 'claude' -and $toolValue -like 'persistent:*') {
+                continue
+            }
+
+            if ($seenTools.Add($toolValue)) {
                 $resolvedTools.Add($toolValue)
             }
         }
@@ -1554,12 +1742,26 @@ function Get-ClaudeMemoryScope {
     param([object]$Meta)
 
     $claudeMeta = Get-Prop $Meta 'claude'
-    $memoryScope = Get-Prop $claudeMeta 'memory'
-    if ([string]::IsNullOrWhiteSpace([string]$memoryScope)) {
-        return $null
+    $memoryScope = [string](Get-Prop $claudeMeta 'memory')
+    if (-not [string]::IsNullOrWhiteSpace($memoryScope)) {
+        return $memoryScope
     }
 
-    return [string]$memoryScope
+    foreach ($toolId in (Get-ConfiguredCanonicalTools -Meta $Meta)) {
+        $mapping = Resolve-ToolMappingForClient -ToolId $toolId -Client 'claude'
+        if (-not $mapping.Found) {
+            continue
+        }
+
+        foreach ($toolValue in (ConvertTo-StringArray $mapping.Values)) {
+            $memoryMatch = [regex]::Match([string]$toolValue, '^persistent:(?<scope>.+)$')
+            if ($memoryMatch.Success) {
+                return $memoryMatch.Groups['scope'].Value
+            }
+        }
+    }
+
+    return $null
 }
 
 function Test-ClaudeContext7Configured {
@@ -1587,71 +1789,11 @@ function Test-ClaudeContext7Configured {
     return $script:claudeContext7Configured
 }
 
-function Get-ClaudeToolMappings {
-    param(
-        [object]$Meta,
-        [string]$ArtifactLabel
-    )
+function Get-InstructionScope {
+    param([object]$Meta)
 
-    $tools = Get-Prop $Meta 'tools'
-    $claudeTools = Get-Prop $tools 'claude'
-    if ($null -ne $claudeTools -and $claudeTools -isnot [string]) {
-        return ,(ConvertTo-StringArray $claudeTools)
-    }
-
-    if ($claudeTools -is [string] -and $claudeTools -ne 'auto') {
-        return ,(ConvertTo-StringArray $claudeTools)
-    }
-
-    $mapped = New-Object System.Collections.Generic.List[string]
-    foreach ($tool in (ConvertTo-StringArray (Get-Prop $tools 'copilot'))) {
-        switch -Regex ($tool) {
-            '^read($|/)' {
-                if (-not $mapped.Contains('Read')) { $mapped.Add('Read') }
-            }
-            '^search$' {
-                if (-not $mapped.Contains('Grep')) { $mapped.Add('Grep') }
-                if (-not $mapped.Contains('Glob')) { $mapped.Add('Glob') }
-            }
-            '^edit$' {
-                if (-not $mapped.Contains('Edit')) { $mapped.Add('Edit') }
-            }
-            '^execute$' {
-                if (-not $mapped.Contains('Bash')) { $mapped.Add('Bash') }
-            }
-            '^web($|/)' {
-                if (-not $mapped.Contains('WebFetch')) { $mapped.Add('WebFetch') }
-            }
-            '^todo$' {
-                if (-not $mapped.Contains('TodoWrite')) { $mapped.Add('TodoWrite') }
-            }
-            '^agent$' {
-                if (-not $mapped.Contains('Task')) { $mapped.Add('Task') }
-            }
-            '^github/' {
-                if (-not $mapped.Contains('Bash')) { $mapped.Add('Bash') }
-                if (-not $mapped.Contains('WebFetch')) { $mapped.Add('WebFetch') }
-                Add-Warning "${ArtifactLabel}: GitHub-specific Copilot tools were mapped to Claude Bash/WebFetch. Install GitHub CLI or a GitHub MCP server if you need closer parity."
-            }
-            '^io\.github\.upstash/context7/' {
-                if (Test-ClaudeContext7Configured) {
-                    if (-not $mapped.Contains('mcp__context7__resolve-library-id')) { $mapped.Add('mcp__context7__resolve-library-id') }
-                    if (-not $mapped.Contains('mcp__context7__get-library-docs')) { $mapped.Add('mcp__context7__get-library-docs') }
-                }
-                else {
-                    Add-Warning "${ArtifactLabel}: Context7 has no native Claude tool equivalent. Install a matching MCP server and override tools.claude in meta.json if you want parity."
-                }
-            }
-            '^vscode($|/)' {
-                Add-Warning "${ArtifactLabel}: VS Code-only tools are ignored for Claude rendering."
-            }
-            default {
-                Add-Warning "${ArtifactLabel}: No Claude tool mapping defined for Copilot tool '$tool'."
-            }
-        }
-    }
-
-    return ,($mapped.ToArray())
+    $instructionMeta = Get-Prop $Meta 'instructions'
+    return (ConvertTo-StringArray (Get-Prop $instructionMeta 'scope'))
 }
 
 function Read-CanonicalMeta {
@@ -1767,8 +1909,8 @@ function Get-CopilotCommandSkillDefinitions {
     param([object]$SkillDefinition)
 
     $baseBody = (Resolve-ClientMarkdown -Content $SkillDefinition.Body -Client 'copilot').TrimEnd()
-    $copilotMeta = Get-Prop $SkillDefinition.Meta 'copilot'
-    $excludedCommands = ConvertTo-StringArray (Get-Prop $copilotMeta 'excludeCommands')
+    $skillMeta = Get-Prop $SkillDefinition.Meta 'skills'
+    $excludedCommands = ConvertTo-StringArray (Get-Prop (Get-Prop $skillMeta 'excludeCommands') 'copilot')
 
     foreach ($commandFile in $SkillDefinition.CommandFiles) {
         $commandName = [System.IO.Path]::GetFileNameWithoutExtension($commandFile.Name)
@@ -1823,21 +1965,6 @@ function Get-CopilotCommandSkillDefinitions {
     }
 }
 
-function Resolve-ClaudeModel {
-    param([object]$Model)
-
-    $modelValue = [string]$Model
-    if ([string]::IsNullOrWhiteSpace($modelValue)) {
-        return $Model
-    }
-
-    if ($modelValue.Equals('default', [StringComparison]::OrdinalIgnoreCase)) {
-        return 'sonnet'
-    }
-
-    return $Model
-}
-
 function ConvertTo-CopilotAgentDocument {
     param(
         [object]$Meta,
@@ -1845,20 +1972,21 @@ function ConvertTo-CopilotAgentDocument {
         [string]$Client
     )
 
+    $resolvedBody = Resolve-ClientMarkdown -Content $Body -Client 'copilot'
     $frontmatter = New-Object System.Collections.Generic.List[string]
     $frontmatter.Add('name: ' + (Format-YamlScalar (Get-Prop $Meta 'name')))
     $frontmatter.Add('description: ' + (Format-YamlScalar (Get-Prop $Meta 'description')))
 
-    $models = Get-Prop $Meta 'models'
-    $model = if ($Client -eq 'vscode') { Get-Prop $models 'vscode' } else { Get-Prop $models 'copilotCli' }
+    $model = Resolve-ModelForClient -Meta $Meta -Client $Client
     if (-not [string]::IsNullOrWhiteSpace([string]$model)) {
         $frontmatter.Add('model: ' + (Format-YamlScalar $model))
     }
 
+    $agentsMeta = Get-Prop $Meta 'agents'
     if ($Client -eq 'vscode') {
-        $agents = ConvertTo-StringArray (Get-Prop (Get-Prop $Meta 'copilot') 'agents')
-        if ($agents.Count -gt 0) {
-            $frontmatter.Add('agents: ' + (Format-YamlInlineArray $agents))
+        $subAgents = ConvertTo-StringArray (Get-Prop $agentsMeta 'subAgents')
+        if ($subAgents.Count -gt 0) {
+            $frontmatter.Add('agents: ' + (Format-YamlInlineArray $subAgents))
         }
     }
 
@@ -1867,13 +1995,12 @@ function ConvertTo-CopilotAgentDocument {
         $frontmatter.Add('tools: ' + (Format-YamlInlineArray $copilotTools))
     }
 
-    $copilotMeta = Get-Prop $Meta 'copilot'
-    if ($null -ne (Get-Prop $copilotMeta 'userInvocable')) {
-        $frontmatter.Add('user-invocable: ' + ((ConvertTo-BoolValue (Get-Prop $copilotMeta 'userInvocable') $true).ToString().ToLower()))
+    if ($null -ne (Get-Prop $agentsMeta 'userInvocable')) {
+        $frontmatter.Add('user-invocable: ' + ((ConvertTo-BoolValue (Get-Prop $agentsMeta 'userInvocable') $true).ToString().ToLower()))
     }
 
     if ($Client -eq 'vscode') {
-        $handoffs = Get-Prop $copilotMeta 'handoffs'
+        $handoffs = Get-Prop $agentsMeta 'handoffs'
         if ($null -ne $handoffs) {
             $handoffItems = @($handoffs)
             if ($handoffItems.Count -gt 0) {
@@ -1888,7 +2015,7 @@ function ConvertTo-CopilotAgentDocument {
         }
     }
 
-    return New-DocumentContent -FrontmatterLines $frontmatter.ToArray() -Body $Body
+    return New-DocumentContent -FrontmatterLines $frontmatter.ToArray() -Body $resolvedBody
 }
 
 function ConvertTo-ClaudeAgentDocument {
@@ -1897,11 +2024,12 @@ function ConvertTo-ClaudeAgentDocument {
         [string]$Body
     )
 
+    $resolvedBody = Resolve-ClientMarkdown -Content $Body -Client 'claude'
     $frontmatter = New-Object System.Collections.Generic.List[string]
     $frontmatter.Add('name: ' + (Format-YamlScalar (Get-Prop $Meta 'name')))
     $frontmatter.Add('description: ' + (Format-YamlScalar (Get-Prop $Meta 'description')))
 
-    $model = Resolve-ClaudeModel (Get-Prop (Get-Prop $Meta 'models') 'claude')
+    $model = Resolve-ModelForClient -Meta $Meta -Client 'claude'
     if (-not [string]::IsNullOrWhiteSpace([string]$model)) {
         $frontmatter.Add('model: ' + (Format-YamlScalar $model))
     }
@@ -1916,12 +2044,12 @@ function ConvertTo-ClaudeAgentDocument {
         $frontmatter.Add('memory: ' + (Format-YamlScalar $memoryScope))
     }
 
-    $copilotMeta = Get-Prop $Meta 'copilot'
-    if ((ConvertTo-StringArray (Get-Prop $copilotMeta 'agents')).Count -gt 0 -or $null -ne (Get-Prop $copilotMeta 'handoffs')) {
+    $agentsMeta = Get-Prop $Meta 'agents'
+    if ((ConvertTo-StringArray (Get-Prop $agentsMeta 'subAgents')).Count -gt 0 -or $null -ne (Get-Prop $agentsMeta 'handoffs')) {
         Add-Warning "$(Get-Prop $Meta 'id'): Copilot orchestration fields were omitted from Claude rendering because there is no compatible native frontmatter equivalent."
     }
 
-    return New-DocumentContent -FrontmatterLines $frontmatter.ToArray() -Body $Body
+    return New-DocumentContent -FrontmatterLines $frontmatter.ToArray() -Body $resolvedBody
 }
 
 function ConvertTo-CopilotInstructionDocument {
@@ -1930,8 +2058,9 @@ function ConvertTo-CopilotInstructionDocument {
         [string]$Body
     )
 
-    $scope = Get-Prop (Get-Prop $Meta 'scope') 'copilot' '**'
-    $frontmatter = @('applyTo: ' + (Format-YamlScalar $scope))
+    $scope = @(Get-InstructionScope -Meta $Meta)
+    $applyTo = if ($scope.Count -eq 0) { '**' } else { $scope -join ', ' }
+    $frontmatter = @('applyTo: ' + (Format-YamlScalar $applyTo))
     return New-DocumentContent -FrontmatterLines $frontmatter -Body $Body
 }
 
@@ -1944,7 +2073,7 @@ function ConvertTo-ClaudeRuleDocument {
     $frontmatter = New-Object System.Collections.Generic.List[string]
     $frontmatter.Add('description: ' + (Format-YamlScalar (Get-Prop $Meta 'description')))
     $frontmatter.Add('paths:')
-    foreach ($pathPattern in (ConvertTo-StringArray (Get-Prop (Get-Prop $Meta 'scope') 'claude'))) {
+    foreach ($pathPattern in (Get-InstructionScope -Meta $Meta)) {
         $frontmatter.Add('  - ' + (Format-YamlScalar $pathPattern))
     }
 
@@ -2041,7 +2170,7 @@ function Get-AgentDefinitions {
             Enabled = Get-Prop $meta 'enabled'
             Id = Get-Prop $meta 'id' $agentDir.Name
             ClaudeMeta = Get-Prop $meta 'claude'
-            RepositoryRoot = Get-AgentRepositoryRoot -Meta $meta
+            Repositories = @(Get-EnabledRepositories -Meta $meta)
         }
     }
 }
@@ -2056,7 +2185,7 @@ function Get-InstructionDefinitions {
             Body = Get-Content -LiteralPath (Join-Path $instructionDir.FullName 'body.md') -Raw
             Enabled = Get-Prop $meta 'enabled'
             Id = Get-Prop $meta 'id' $instructionDir.Name
-            RepositoryRoot = Get-InstructionRepositoryRoot -Meta $meta
+            Repositories = @(Get-EnabledRepositories -Meta $meta)
         }
     }
 }
@@ -2122,7 +2251,7 @@ function Install-RenderedSkill {
         [string]$Target
     )
 
-    function Install-ManagedLinkedSkillItem {
+    function Install-ManagedSkillItem {
         param(
             [System.IO.FileSystemInfo]$SourceItem,
             [string]$DestinationPath
@@ -2136,14 +2265,14 @@ function Install-RenderedSkill {
             $allChildItemsSucceeded = $true
             Get-ChildItem -LiteralPath $SourceItem.FullName -Force | ForEach-Object {
                 $childPath = Join-Path $DestinationPath $_.Name
-                $childSucceeded = Install-ManagedLinkedSkillItem -SourceItem $_ -DestinationPath $childPath
+                $childSucceeded = Install-ManagedSkillItem -SourceItem $_ -DestinationPath $childPath
                 $allChildItemsSucceeded = $allChildItemsSucceeded -and $childSucceeded
             }
 
             return $allChildItemsSucceeded
         }
 
-        return (Write-ManagedSymlink -Path $DestinationPath -Target $SourceItem.FullName)
+        return (Copy-ManagedFile -Path $DestinationPath -SourcePath $SourceItem.FullName)
     }
 
     $id = $SkillDefinition.Id
@@ -2187,8 +2316,8 @@ function Install-RenderedSkill {
         $_.Name -notin $excludedItemNames
     } | ForEach-Object {
         $targetPath = Join-Path $targetDirectory $_.Name
-        $linkSucceeded = Install-ManagedLinkedSkillItem -SourceItem $_ -DestinationPath $targetPath
-        $allSucceeded = $allSucceeded -and $linkSucceeded
+        $copySucceeded = Install-ManagedSkillItem -SourceItem $_ -DestinationPath $targetPath
+        $allSucceeded = $allSucceeded -and $copySucceeded
     }
 
     return $allSucceeded

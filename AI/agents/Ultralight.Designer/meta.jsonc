@@ -3,65 +3,23 @@
 	"name": "Ultralight (Designer)",
 	"description": "Handles all UI/UX design tasks.",
 	"enabled": {
-		"vscode": true,
-		"copilotCli": true,
+		"copilot": true,
 		"claude": true
 	},
-	"models": {
-		"vscode": "Gemini 3 Pro (Preview) (copilot)",
-		"copilotCli": "gemini-3-pro-preview",
-		"claude": "default"
-	},
-	"tools": {
-		// vscode workspace/editor affordances are Copilot-only
-		"vscode": {},
-		// execute -> Claude Bash
-		"execute": {
-			"claude": "Bash"
-		},
-		// read -> Claude Read
-		"read": {
-			"claude": "Read"
-		},
-		// agent -> Claude Agent
-		"agent": {
-			"claude": "Agent"
-		},
-		// Context7 MCP -> explicit Claude MCP tool names
-		"io.github.upstash/context7/*": {
-			"claude": [
-				"mcp__context7__resolve-library-id",
-				"mcp__context7__get-library-docs"
-			]
-		},
-		// edit -> Claude Edit
-		"edit": {
-			"claude": "Edit"
-		},
-		// search -> Claude Grep + Glob
-		"search": {
-			"claude": [
-				"Grep",
-				"Glob"
-			]
-		},
-		// web -> Claude WebFetch
-		"web": {
-			"claude": "WebFetch"
-		},
-		// vscode/memory stays on Copilot; Claude uses the explicit memory field below
-		"vscode/memory": {},
-		// todo -> Claude TodoWrite
-		"todo": {
-			"claude": "TodoWrite"
-		}
-	},
-	"copilot": {
+	"agents": {
+		"model": "Gemini 3 Pro (Preview) (copilot)",
+		"tools": [
+			"vscode",
+			"vscode/memory",
+			"execute",
+			"read",
+			"agent",
+			"io.github.upstash/context7/*",
+			"edit",
+			"search",
+			"web",
+			"todo"
+		],
 		"userInvocable": false
-	},
-	"claude": {
-		"target": "agent",
-		// vscode/memory -> Claude persistent memory
-		"memory": "user"
 	}
 }

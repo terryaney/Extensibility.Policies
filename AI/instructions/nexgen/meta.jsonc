@@ -3,16 +3,11 @@
 	"name": "Nexgen Instructions",
 	"description": "Nexgen/LWC instructions rendered for Copilot and Claude.",
 	"enabled": {
-		"vscode": true,
-		"copilotCli": false,
-		"claudeGlobalInstruction": false,
-		"claudePathInstruction": true
+		"copilot": true,
+		"claude": true,
+		"repositories": "C:\\BTR\\Camelot\\Websites\\ESS\\Nexgen"
 	},
-	"publish": {
-		"repositoryRoot": "C:\\BTR\\Camelot\\Websites\\ESS\\Nexgen"
-	},
-	"scope": {
-		"copilot": "**/*.ts, **/*.js, **/*.kaml",
-		"claude": [ "**/*.ts", "**/*.js", "**/*.kaml" ]
+	"instructions": {
+		"scope": [ "**/*.ts", "**/*.js", "**/*.kaml" ]
 	}
 }

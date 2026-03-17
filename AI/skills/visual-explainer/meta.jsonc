@@ -14,9 +14,9 @@
 		"copilot": true,
 		"claude": true
 	},
-	"copilot": {
-		"excludeCommands": [
-			"share"
-		]
+	"skills": {
+		"excludeCommands": {
+			"copilot": [ "share" ]
+		}
 	}
 }

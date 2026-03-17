@@ -3,15 +3,7 @@
 	"name": "KAT Shared Instruction",
 	"description": "Shared KAT communication, code, and .NET guidance rendered for Copilot and Claude.",
 	"enabled": {
-		"vscode": true,
-		"copilotCli": true,
-		"claudeGlobalInstruction": true,
-		"claudePathInstruction": false
-	},
-	"scope": {
-		"copilot": "**",
-		"claude": [
-			"**"
-		]
+		"copilot": true,
+		"claude": true
 	}
 }

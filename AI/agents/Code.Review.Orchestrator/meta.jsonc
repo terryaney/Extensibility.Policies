@@ -3,42 +3,22 @@
 	"name": ".NET Core Code Review",
 	"description": "Run three parallel code reviews (GPT, Gemini, Codex)",
 	"enabled": {
-		"vscode": true,
-		"copilotCli": true,
+		"copilot": true,
 		"claude": true
 	},
-	"models": {
-		"vscode": "GPT-5.4 (copilot)",
-		"copilotCli": "gpt-5.4",
-		"claude": "default"
-	},
-	"tools": {
-		// read/readFile -> Claude Read
-		"read/readFile": {
-			"claude": "Read"
-		},
-		// agent -> Claude Agent
-		"agent": {
-			"claude": "Agent"
-		},
-		// edit -> Claude Edit
-		"edit": {
-			"claude": "Edit"
-		},
-		// vscode/memory stays on Copilot; Claude uses the explicit memory field below
-		"vscode/memory": {}
-	},
-	"copilot": {
+	"agents": {
+		"model": "GPT-5.4 (copilot)",
+		"tools": [
+			"read/readFile",
+			"agent",
+			"edit",
+			"vscode/memory"
+		],
 		"userInvocable": true,
-		"agents": [
+		"subAgents": [
 			"Reviewer (GPT)",
 			"Reviewer (Gemini)",
 			"Reviewer (Codex)"
 		]
-	},
-	"claude": {
-		"target": "agent",
-		// vscode/memory -> Claude persistent memory
-		"memory": "user"
 	}
 }

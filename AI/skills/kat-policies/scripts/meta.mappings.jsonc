@@ -1,0 +1,60 @@
+{
+	"models": {
+		"GPT-5.4 (copilot)": {
+			"copilotCli": "gpt-5.4",
+			"claude": "sonnet"
+		},
+		"GPT-5.3-Codex (copilot)": {
+			"copilotCli": "gpt-5.3-codex",
+			"claude": "sonnet"
+		},
+		"Gemini 3 Pro (Preview) (copilot)": {
+			"copilotCli": "gemini-3-pro-preview",
+			"claude": "sonnet"
+		}
+	},
+	"tools": {
+		"agent": {
+			"claude": "Agent"
+		},
+		"edit": {
+			"claude": [ "Edit", "Write" ]
+		},
+		"execute": {
+			"claude": "Bash"
+		},
+		"github/*": {
+			"claude": [ "Bash", "WebFetch" ]
+		},
+		"io.github.upstash/context7/*": {
+			"claude": [ "mcp__context7__resolve-library-id", "mcp__context7__get-library-docs" ]
+		},
+		"read": {
+			"claude": "Read"
+		},
+		"read/*": {
+			"claude": "Read"
+		},
+		"search": {
+			"claude": [ "Grep", "Glob" ]
+		},
+		"todo": {
+			"claude": "TodoWrite"
+		},
+		"vscode": {
+			"claude": [ "AskUserQuestion", "persistent:user" ]
+		},
+		"vscode/askQuestions": {
+			"claude": "AskUserQuestion"
+		},
+		"vscode/memory": {
+			"claude": "persistent:user"
+		},
+		"web": {
+			"claude": "WebFetch"
+		},
+		"web/*": {
+			"claude": "WebFetch"
+		}
+	}
+}

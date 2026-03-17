@@ -3,44 +3,18 @@
 	"name": "Reviewer (GPT)",
 	"description": "Subagent controlled by * Code Review Orchestrator (NO STANDALONE USE)",
 	"enabled": {
-		"vscode": true,
-		"copilotCli": true,
+		"copilot": true,
 		"claude": true
 	},
-	"models": {
-		"vscode": "GPT-5.4 (copilot)",
-		"copilotCli": "gpt-5.4",
-		"claude": "default"
-	},
-	"tools": {
-		// search -> Claude Grep + Glob
-		"search": {
-			"claude": [
-				"Grep",
-				"Glob"
-			]
-		},
-		// read/problems -> Claude Read
-		"read/problems": {
-			"claude": "Read"
-		},
-		// read/terminalLastCommand -> Claude Read
-		"read/terminalLastCommand": {
-			"claude": "Read"
-		},
-		// web/githubRepo -> Claude WebFetch
-		"web/githubRepo": {
-			"claude": "WebFetch"
-		},
-		// Context7 MCP -> explicit Claude MCP tool names
-		"io.github.upstash/context7/*": {
-			"claude": [
-				"mcp__context7__resolve-library-id",
-				"mcp__context7__get-library-docs"
-			]
-		}
-	},
-	"copilot": {
+	"agents": {
+		"model": "GPT-5.4 (copilot)",
+		"tools": [
+			"search",
+			"read/problems",
+			"read/terminalLastCommand",
+			"web/githubRepo",
+			"io.github.upstash/context7/*"
+		],
 		"userInvocable": false,
 		"handoffs": [
 			{
@@ -50,8 +24,5 @@
 				"label": "Fix Issues"
 			}
 		]
-	},
-	"claude": {
-		"target": "agent"
 	}
 }
