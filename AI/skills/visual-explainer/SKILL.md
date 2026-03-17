@@ -6,12 +6,7 @@ Generate self-contained HTML files for technical diagrams, visualizations, and d
 
 ## Available Commands
 
-<!-- copilot:start -->
-These workflows are published in Copilot as standalone child skills. Invoke them directly as `/visual-explainer-diff-review`, `/visual-explainer-plan-review`, `/visual-explainer-project-recap`, `/visual-explainer-generate-web-diagram`, `/visual-explainer-generate-visual-plan`, `/visual-explainer-generate-slides`, and `/visual-explainer-fact-check`.
-<!-- copilot:end -->
-<!-- claude:start -->
-Detailed prompt templates in `./commands/`. In Claude, these are exposed as namespaced slash commands such as `/visual-explainer:diff-review`.
-<!-- claude:end -->
+Detailed prompt templates in `./commands/`. Invoke each as a namespaced slash command: `/visual-explainer:diff-review`, `/visual-explainer:plan-review`, `/visual-explainer:project-recap`, `/visual-explainer:generate-web-diagram`, `/visual-explainer:generate-visual-plan`, `/visual-explainer:generate-slides`, and `/visual-explainer:fact-check`.
 
 | Command | What it does |
 |---------|-------------|
@@ -312,12 +307,7 @@ Use these sparingly within visual pages to highlight key points or provide breat
 
 ## Slide Deck Mode
 
-<!-- copilot:start -->
-An alternative output format for presenting content as a magazine-quality slide presentation instead of a scrollable page. **Opt-in only** — the agent generates slides when the user invokes `/visual-explainer-generate-slides`, passes `--slides` to an existing visual-explainer workflow (for example `/visual-explainer-diff-review --slides`), or explicitly asks for a slide deck. Never auto-select slide format.
-<!-- copilot:end -->
-<!-- claude:start -->
-An alternative output format for presenting content as a magazine-quality slide presentation instead of a scrollable page. **Opt-in only** — the agent generates slides when the user invokes `/visual-explainer:generate-slides`, passes `--slides` to an existing prompt (for example `/visual-explainer:diff-review --slides`), or explicitly asks for a slide deck. Never auto-select slide format.
-<!-- claude:end -->
+An alternative output format for presenting content as a magazine-quality slide presentation instead of a scrollable page. **Opt-in only** — the agent generates slides when the user invokes `/visual-explainer:generate-slides`, passes `--slides` to an existing visual-explainer workflow (for example `/visual-explainer:diff-review --slides`), or explicitly asks for a slide deck. Never auto-select slide format.
 
 **Before generating slides**, read `./references/slide-patterns.md` (engine CSS, slide types, transitions, nav chrome, presets) and `./templates/slide-deck.html` (reference template showing all 10 types). Also read `./references/css-patterns.md` for shared patterns and `./references/libraries.md` for Mermaid/Chart.js theming.
 
@@ -333,12 +323,7 @@ An alternative output format for presenting content as a magazine-quality slide 
 
 **Curated presets:** Four slide-specific presets as starting points (Midnight Editorial, Warm Signal, Terminal Mono, Swiss Clean) plus the existing 8 aesthetic directions adapted for slides. Pick one and commit. See `slide-patterns.md` for preset CSS values.
 
-<!-- copilot:start -->
-**`--slides` flag on existing prompts:** When a user passes `--slides` to `/visual-explainer-diff-review`, `/visual-explainer-plan-review`, `/visual-explainer-project-recap`, or another visual-explainer workflow, the agent gathers data using the prompt's normal data-gathering instructions, then presents the content as a slide deck instead of a scrollable page. The slide version tells the same story with different structure and pacing — but the same breadth of coverage. Don't use the slide format as an excuse to summarize or skip sections that the scrollable version would have included.
-<!-- copilot:end -->
-<!-- claude:start -->
 **`--slides` flag on existing prompts:** When a user passes `--slides` to `/visual-explainer:diff-review`, `/visual-explainer:plan-review`, `/visual-explainer:project-recap`, or another visual-explainer prompt, the agent gathers data using the prompt's normal data-gathering instructions, then presents the content as a slide deck instead of a scrollable page. The slide version tells the same story with different structure and pacing — but the same breadth of coverage. Don't use the slide format as an excuse to summarize or skip sections that the scrollable version would have included.
-<!-- claude:end -->
 
 ## File Structure
 
@@ -368,11 +353,7 @@ Every diagram is a single self-contained `.html` file. No external assets except
 
 Share visual explainer pages instantly via Vercel. No account or authentication required.
 
-<!-- copilot:start -->
-**Usage:** Invoke `/visual-explainer-share <html-file>`.
-<!-- copilot:end -->
-<!-- claude:start -->
-**Usage:**
+**Usage:** Invoke `/visual-explainer:share <html-file>`.
 ```bash
 bash {{skill_dir}}/scripts/share.sh <html-file>
 ```
@@ -393,22 +374,15 @@ bash {{skill_dir}}/scripts/share.sh ~/.agent/diagrams/my-diagram.html
 2. Deploys via the vercel-deploy skill (zero-auth claimable deployment)
 3. URL is live immediately — works in any browser
 
-<!-- claude:start -->
 **Requirements:**
 - vercel-deploy skill must be available in the current environment before sharing can run.
-<!-- claude:end -->
 
 **Notes:**
 - Deployments are public — anyone with the URL can view
 - Preview deployments have configurable retention (default: 30 days)
 - Claim URL lets you transfer the deployment to your Vercel account
 
-<!-- copilot:start -->
-Share is currently exposed only for Claude.
-<!-- copilot:end -->
-<!-- claude:start -->
 See `./commands/share.md` for the share command template.
-<!-- claude:end -->
 
 ## Quality Checks
 

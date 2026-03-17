@@ -452,7 +452,7 @@ function Publish-Skills {
 
             if ($definition.CommandFiles.Count -gt 0) {
                 foreach ($commandFile in $definition.CommandFiles) {
-                    $commandPath = Join-Path (Join-Path $Roots.ClaudeRoot 'commands') $commandFile.Name
+                    $commandPath = Join-Path (Join-Path (Join-Path $Roots.ClaudeRoot 'skills') $id 'commands') $commandFile.Name
                     $commandSucceeded = $false
 
                     if ($skillSucceeded) {
@@ -461,7 +461,7 @@ function Publish-Skills {
                     }
 
                     $commandsSucceeded = $commandsSucceeded -and $commandSucceeded
-                    Add-DeploymentRecord -Category 'link' -Id ('ClaudeCommand/' + $commandFile.Name) -Target 'claudeCommand' -Status $(if ($commandSucceeded) { 'ok' } else { 'blocked' }) -Path $commandPath -Detail $(if ($skillSucceeded) { $null } else { 'skill-publish-failed' })
+                    Add-DeploymentRecord -Category 'skill' -Id ('ClaudeCommand/' + $commandFile.Name) -Target 'claude' -Status $(if ($commandSucceeded) { 'ok' } else { 'blocked' }) -Path $commandPath -Detail $(if ($skillSucceeded) { $null } else { 'skill-publish-failed' })
                 }
 
                 if (-not $commandsSucceeded) {
@@ -1776,13 +1776,14 @@ function Get-CopilotCommandSkillDefinitions {
             continue
         }
 
-        $commandId = $SkillDefinition.Id + '-' + $commandName
+        $commandFolderId = $SkillDefinition.Id + '-' + $commandName
+        $commandDisplayName = $SkillDefinition.Id + ':' + $commandName
         $resolvedCommandContent = Resolve-ClientMarkdown -Content (Get-Content -LiteralPath $commandFile.FullName -Raw) -Client 'copilot'
         $commandDocument = Split-MarkdownFrontmatter -Content $resolvedCommandContent
 
         $meta = [ordered]@{
-            id = $commandId
-            name = $commandId
+            id = $commandFolderId
+            name = $commandDisplayName
             description = if (-not [string]::IsNullOrWhiteSpace([string]$commandDocument.Frontmatter['description'])) {
                 [string]$commandDocument.Frontmatter['description']
             }
@@ -1814,7 +1815,7 @@ function Get-CopilotCommandSkillDefinitions {
                 copilot = $true
                 claude = $false
             }
-            Id = $commandId
+            Id = $commandFolderId
             ClaudeMeta = $null
             CommandFiles = @()
             ExcludedItemNames = @('commands')

@@ -47,10 +47,10 @@ Canonical AI content lives under `/AI` and is authored once, then rendered into 
     <id>/
       SKILL.md
       meta.jsonc
-      commands/        # optional, Claude-only command publishing today
-      scripts/         # optional helper scripts
-      references/      # optional supporting material
-      templates/       # optional supporting material
+      commands/
+      scripts/
+      references/
+      templates/
 ```
 
 ### Agents
@@ -74,7 +74,7 @@ Each canonical skill lives in `/AI/skills/<id>/`.
 - `SKILL.md` contains the shared body only.
 - `meta.jsonc` contains publication toggles and frontmatter fields.
 - Supporting files remain beside the skill and are installed into published skill directories as regular folders containing KAT-managed symlinked files.
-- `commands/*.md` are canonical command workflow files. If present, they are automatically published to `~/.claude/commands/*.md` for Claude and rendered as standalone child skills named `<parent>-<command>` for Copilot. The `commands` directory is not installed inside published skill folders.
+- `commands/*.md` are canonical command workflow files. If present, they are automatically nested in `~/.claude/skills/{id}/commands/` for Claude and rendered as standalone child skills for Copilot with a filesystem-safe folder id `<skill>-<command>` and a published skill name `<skill>:<command>`.
 
 ### Rendered Destinations
 
@@ -84,9 +84,10 @@ The renderer currently targets these install locations:
 |------|------|------|------|
 | Agents | `%APPDATA%/Code/User/prompts/*.agent.md`<sup>1</sup> | `~/.copilot/agents/*.agent.md`<sup>1</sup> | `~/.claude/agents/*.md`<sup>1</sup> |
 | Instructions | `%APPDATA%/Code/User/instructions/*.instructions.md`<sup>1</sup> | `~/.copilot/instructions/*.instructions.md`<sup>1</sup> | `~/.claude/instructions/*.md` and generated `~/.claude/CLAUDE.md` imports for global instructions<br>`~/.claude/rules/*.md`<sup>1</sup> for 'path' restricted instructions |
-| Skills | n/a | `~/.copilot/skills/<id>/` | `~/.claude/skills/<id>/` and optional `~/.claude/commands/*.md` |
+| Skills | n/a | `~/.copilot/skills/<id>/`<sup>2</sup> | `~/.claude/skills/<id>/` |
 
 <sup>1</sup> When `publish.repositoryRoot` is set, the equivalent repo-local path is also published for enabled targets: `.github/agents/*.agent.md`, `.claude/agents/*.md`, `.github/instructions/*.instructions.md`, `.claude/rules/*.md`.
+<sup>2</sup> If a canonical skill has a `commands/*.md` folder, standalone child skills are also published under `~/.copilot/skills/<parent>-<command>/` with the published skill name `<parent>:<command>`.
 
 ## Renderer Notes
 
@@ -214,7 +215,7 @@ Path: `/AI/skills/<id>/meta.jsonc`
 | `metadata` | object | Optional flat object rendered as nested frontmatter. |
 | `enabled.copilot` | bool | Publishes to Copilot CLI. Defaults to `true`. |
 | `enabled.claude` | bool | Publishes to Claude. Defaults to `true`. |
-| `copilot.excludeCommands` | string[] | Optional list of canonical command file basenames to skip when generating Copilot child skills. |
+| `copilot.excludeCommands` | string[] | Optional list of canonical command file basenames to skip when generating Copilot child skills. Copilot stores them under filesystem-safe ids like `<parent>-<command>` and publishes the skill name as `<parent>:<command>`. |
 
 Canonical skill markdown supports optional client markers for small wording differences inside shared content:
 
@@ -230,7 +231,7 @@ Claude-only text.
 
 The renderer strips these markers during publishing so each client receives only its relevant block.
 
-If a canonical skill has a `commands/*.md` folder, Copilot publishing also generates standalone child skills named `<parent>-<command>` such as `visual-explainer-diff-review`. Copilot skill installs do not include a `commands` folder.
+If a canonical skill has a `commands/*.md` folder, Copilot publishing also generates standalone child skill folders named `<parent>-<command>`. Their published skill name is `<parent>:<command>`, so a command can be invoked as `/visual-explainer:diff-review`. Copilot skill installs do not include a `commands` folder.
 
 ### Current Implementation Notes
 
@@ -249,14 +250,14 @@ Both are rendered from the same canonical agent metadata, but they do not load t
 - VS Code agent output is published as `.agent.md` prompt files.
 - Copilot CLI agent output is published under `~/.copilot/agents`.
 - VS Code-only orchestration fields such as `copilot.agents` and `copilot.handoffs` are intentionally omitted from CLI output.
-- VS Code supports slash commands through prompt files and skills, not through Claude-style `.claude/commands/*.md` files.
+- VS Code supports slash commands through prompt files and skills, not through Claude-style nested skill commands under `.claude/skills/<id>/commands/`.
 
 ### Claude Agents vs Commands vs Skills
 
 Claude has a different artifact model from Copilot.
 
 - Claude agents are subagents with their own model, tools, and memory.
-- Claude commands are slash-invoked Markdown files. If a skill has a `commands/*.md` folder, commands are automatically published to `~/.claude/commands`.
+- Claude commands are slash-invoked Markdown files nested in skill folders (`~/.claude/skills/<id>/commands/`). If a skill has a `commands/*.md` folder, those files are automatically nested within the published skill.
 - Claude skills are reusable capability packs under `~/.claude/skills`.
 - Claude agent frontmatter has no equivalent to Copilot `userInvocable: false`.
 - Claude skills do have invocation controls such as `user-invocable` and `disable-model-invocation`, but those are skill-level concerns, not subagent frontmatter.
