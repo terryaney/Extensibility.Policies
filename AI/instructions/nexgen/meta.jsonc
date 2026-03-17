@@ -5,9 +5,8 @@
 	"enabled": {
 		"vscode": true,
 		"copilotCli": false,
-		"claudeInstruction": false,
-		"claudeRule": true,
-		"claudeImport": false
+		"claudeGlobalInstruction": false,
+		"claudePathInstruction": true
 	},
 	"publish": {
 		"repositoryRoot": "C:\\BTR\\Camelot\\Websites\\ESS\\Nexgen"

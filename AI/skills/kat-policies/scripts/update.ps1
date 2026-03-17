@@ -101,8 +101,7 @@ function Get-AgentRepositoryManagedContexts {
 
         foreach ($scanRoot in @(
                 (Join-Path $repositoryRoot '.github\agents'),
-                (Join-Path $repositoryRoot '.claude\agents'),
-                (Join-Path $repositoryRoot '.claude\commands')))
+                (Join-Path $repositoryRoot '.claude\agents')))
         {
             if (-not $contextsByRoot[$repositoryRoot].Contains($scanRoot)) {
                 $contextsByRoot[$repositoryRoot].Add($scanRoot)
@@ -216,7 +215,8 @@ function Publish-TerminalFiles {
         Get-ChildItem -LiteralPath (Join-Path $repoRoot 'Terminal') -Recurse -File | ForEach-Object {
             $relativePath = $_.FullName.Substring((Join-Path $repoRoot 'Terminal').Length).TrimStart('\')
             $targetPath = Join-Path $Roots.TerminalRoot $relativePath
-            $targetSucceeded = Copy-ManagedFile -Path $targetPath -SourcePath $_.FullName
+            # Terminal does not reliably hot-reload symlink targets, so always manage as copied files.
+            $targetSucceeded = Copy-ManagedFile -Path $targetPath -SourcePath $_.FullName -ForceOwnedPath $true
             Add-DeploymentRecord -Category 'link' -Id ('Terminal/' + ($relativePath -replace '\\', '/')) -Target 'terminal' -Status $(if ($targetSucceeded) { 'ok' } else { 'blocked' }) -Path $targetPath
         }
 
@@ -279,13 +279,15 @@ function Publish-Agents {
             }
             else {
                 $repoTargetedClaudeAgent = -not [string]::IsNullOrWhiteSpace($agentRepositoryRoot)
-                $claudeTarget = Get-Prop $definition.ClaudeMeta 'target' 'agent'
-                $claudeFolder = if ($claudeTarget -eq 'command') { 'commands' } else { 'agents' }
+                $claudeTarget = [string](Get-Prop $definition.ClaudeMeta 'target' 'agent')
+                if (-not [string]::IsNullOrWhiteSpace($claudeTarget) -and -not $claudeTarget.Equals('agent', [StringComparison]::OrdinalIgnoreCase)) {
+                    Add-Warning "${id}: claude.target='$claudeTarget' is no longer supported for agents. Publishing to Claude agents instead."
+                }
                 $path = if ([string]::IsNullOrWhiteSpace($agentRepositoryRoot)) {
-                    Join-Path (Join-Path $Roots.ClaudeRoot $claudeFolder) ($id + '.md')
+                    Join-Path (Join-Path $Roots.ClaudeRoot 'agents') ($id + '.md')
                 }
                 else {
-                    Join-Path (Join-Path (Join-Path $agentRepositoryRoot '.claude') $claudeFolder) ($id + '.md')
+                    Join-Path (Join-Path (Join-Path $agentRepositoryRoot '.claude') 'agents') ($id + '.md')
                 }
                 $content = ConvertTo-ClaudeAgentDocument -Meta $definition.Meta -Body $definition.Body
                 $succeeded = Write-ManagedFile -Path $path -Content $content -ForceOwnedPath $repoTargetedClaudeAgent
@@ -304,8 +306,7 @@ function Publish-Instructions {
         [object[]]$Definitions
     )
 
-    $claudeImports = New-Object System.Collections.Generic.List[string]
-    $claudeImportIds = New-Object System.Collections.Generic.List[string]
+    $claudeGlobalInstructionIds = New-Object System.Collections.Generic.List[string]
 
     foreach ($definition in $Definitions) {
         $enabled = $definition.Enabled
@@ -344,34 +345,60 @@ function Publish-Instructions {
             Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'copilotCli' -Status 'disabled'
         }
 
-        if (ConvertTo-BoolValue (Get-Prop $enabled 'claudeInstruction') $true) {
+        $hasClaudeGlobalInstruction = $null -ne (Get-Prop $enabled 'claudeGlobalInstruction')
+        if ($hasClaudeGlobalInstruction) {
+            $claudeGlobalInstructionEnabled = ConvertTo-BoolValue (Get-Prop $enabled 'claudeGlobalInstruction') $true
+        }
+        else {
+            $legacyClaudeInstructionEnabled = ConvertTo-BoolValue (Get-Prop $enabled 'claudeInstruction') $true
+            $legacyClaudeImportEnabled = ConvertTo-BoolValue (Get-Prop $enabled 'claudeImport') $true
+            $claudeGlobalInstructionEnabled = $legacyClaudeInstructionEnabled -and $legacyClaudeImportEnabled
+        }
+
+        $hasClaudePathInstruction = $null -ne (Get-Prop $enabled 'claudePathInstruction')
+        if ($hasClaudePathInstruction) {
+            $claudePathInstructionEnabled = ConvertTo-BoolValue (Get-Prop $enabled 'claudePathInstruction') $false
+        }
+        else {
+            $claudePathInstructionEnabled = ConvertTo-BoolValue (Get-Prop $enabled 'claudeRule') $false
+        }
+
+        if ($claudeGlobalInstructionEnabled -and $claudePathInstructionEnabled) {
+            Add-Warning "${id}: Both claudeGlobalInstruction and claudePathInstruction are enabled. Publishing only the path-scoped rule."
+            $claudeGlobalInstructionEnabled = $false
+        }
+
+        if ($claudeGlobalInstructionEnabled) {
             if (-not [string]::IsNullOrWhiteSpace($instructionRepositoryRoot) -and -not (Test-Path -LiteralPath $instructionRepositoryRoot -PathType Container)) {
                 Add-BlockedPath $instructionRepositoryRoot
-                Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'claudeInstruction' -Status 'blocked' -Path $instructionRepositoryRoot -Detail 'repository-root-not-found'
+                Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'claudeGlobalInstruction' -Status 'blocked' -Path $instructionRepositoryRoot -Detail 'repository-root-not-found'
             }
             else {
-                $repoTargetedClaudeInstruction = -not [string]::IsNullOrWhiteSpace($instructionRepositoryRoot)
+                $repoTargetedClaudeGlobalInstruction = -not [string]::IsNullOrWhiteSpace($instructionRepositoryRoot)
                 $path = if ([string]::IsNullOrWhiteSpace($instructionRepositoryRoot)) {
                     Join-Path (Join-Path $Roots.ClaudeRoot 'instructions') ($id + '.md')
                 }
                 else {
                     Join-Path (Join-Path $instructionRepositoryRoot '.claude\instructions') ($id + '.md')
                 }
-                $succeeded = Write-ManagedFile -Path $path -Content $definition.Body -ForceOwnedPath $repoTargetedClaudeInstruction
-                Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'claudeInstruction' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $path
+                $succeeded = Write-ManagedFile -Path $path -Content $definition.Body -ForceOwnedPath $repoTargetedClaudeGlobalInstruction
+                Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'claudeGlobalInstruction' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $path
+                if ($succeeded) {
+                    $claudeGlobalInstructionIds.Add($id)
+                }
             }
         }
         else {
-            Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'claudeInstruction' -Status 'disabled'
+            Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'claudeGlobalInstruction' -Status 'disabled'
         }
 
-        if (ConvertTo-BoolValue (Get-Prop $enabled 'claudeRule') $true) {
+        if ($claudePathInstructionEnabled) {
             if (-not [string]::IsNullOrWhiteSpace($instructionRepositoryRoot) -and -not (Test-Path -LiteralPath $instructionRepositoryRoot -PathType Container)) {
                 Add-BlockedPath $instructionRepositoryRoot
-                Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'claudeRule' -Status 'blocked' -Path $instructionRepositoryRoot -Detail 'repository-root-not-found'
+                Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'claudePathInstruction' -Status 'blocked' -Path $instructionRepositoryRoot -Detail 'repository-root-not-found'
             }
             else {
-                $repoTargetedClaudeRule = -not [string]::IsNullOrWhiteSpace($instructionRepositoryRoot)
+                $repoTargetedClaudePathInstruction = -not [string]::IsNullOrWhiteSpace($instructionRepositoryRoot)
                 $path = if ([string]::IsNullOrWhiteSpace($instructionRepositoryRoot)) {
                     Join-Path (Join-Path $Roots.ClaudeRoot 'rules') ($id + '.md')
                 }
@@ -379,26 +406,17 @@ function Publish-Instructions {
                     Join-Path (Join-Path $instructionRepositoryRoot '.claude\rules') ($id + '.md')
                 }
                 $content = ConvertTo-ClaudeRuleDocument -Meta $definition.Meta -Body $definition.Body
-                $succeeded = Write-ManagedFile -Path $path -Content $content -ForceOwnedPath $repoTargetedClaudeRule
-                Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'claudeRule' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $path
+                $succeeded = Write-ManagedFile -Path $path -Content $content -ForceOwnedPath $repoTargetedClaudePathInstruction
+                Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'claudePathInstruction' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $path
             }
         }
         else {
-            Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'claudeRule' -Status 'disabled'
-        }
-
-        if (ConvertTo-BoolValue (Get-Prop $enabled 'claudeImport') $true) {
-            $claudeImports.Add("@instructions/$id.md")
-            $claudeImportIds.Add($id)
-        }
-        else {
-            Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'claudeImport' -Status 'disabled'
+            Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'claudePathInstruction' -Status 'disabled'
         }
     }
 
     return [pscustomobject]@{
-        ClaudeImports = @($claudeImports.ToArray())
-        ClaudeImportIds = @($claudeImportIds.ToArray())
+        ClaudeGlobalInstructionIds = @($claudeGlobalInstructionIds.ToArray())
     }
 }
 
@@ -431,9 +449,8 @@ function Publish-Skills {
             $claudeDefinition = New-ClaudeSkillDefinition -SkillDefinition $definition
             $skillSucceeded = Install-RenderedSkill -Root $Roots.ClaudeRoot -SkillDefinition $claudeDefinition -Target 'claude'
             $commandsSucceeded = $true
-            $exposeCommands = ConvertTo-BoolValue (Get-Prop $definition.ClaudeMeta 'exposeCommands') ($definition.CommandFiles.Count -gt 0)
 
-            if ($exposeCommands -and $definition.CommandFiles.Count -gt 0) {
+            if ($definition.CommandFiles.Count -gt 0) {
                 foreach ($commandFile in $definition.CommandFiles) {
                     $commandPath = Join-Path (Join-Path $Roots.ClaudeRoot 'commands') $commandFile.Name
                     $commandSucceeded = $false
@@ -474,7 +491,7 @@ function Publish-ClaudeDocument {
     }
 
     $claudeImportsByRoot = @{}
-    foreach ($instructionId in $InstructionPublishResult.ClaudeImportIds) {
+    foreach ($instructionId in $InstructionPublishResult.ClaudeGlobalInstructionIds) {
         $definition = $definitionsById[$instructionId]
         if ($null -eq $definition) {
             continue
@@ -505,9 +522,6 @@ function Publish-ClaudeDocument {
         $repoTargetedClaudeDocument = -not $targetRoot.Equals($Roots.ClaudeRoot, [StringComparison]::OrdinalIgnoreCase)
         $claudeDocumentSucceeded = Write-ManagedFile -Path $claudeDocumentPath -Content ($claudeDocument -join "`r`n") -ForceOwnedPath $repoTargetedClaudeDocument
         Add-DeploymentRecord -Category 'link' -Id 'CLAUDE.md' -Target 'claudeDoc' -Status $(if ($claudeDocumentSucceeded) { 'ok' } else { 'blocked' }) -Path $claudeDocumentPath -Detail ("imports=" + $instructionIds.Count)
-        foreach ($instructionId in $instructionIds) {
-            Add-DeploymentRecord -Category 'instruction' -Id $instructionId -Target 'claudeImport' -Status $(if ($claudeDocumentSucceeded) { 'ok' } else { 'blocked' }) -Path $claudeDocumentPath
-        }
     }
 }
 
@@ -609,7 +623,7 @@ function Format-AsciiCell {
     $text = if ($null -eq $Value) { '' } else { [string]$Value }
     $effectiveAlignment = $Alignment
     if ($Alignment -eq 'status') {
-        if ($text -in @('ok', '--', 'off', 'skip')) {
+        if ($text.Length -le $Width) {
             $effectiveAlignment = 'center'
         }
         else {
@@ -778,9 +792,8 @@ function Write-DeploymentMatrix {
         vscode = 'vscode'
         copilotCli = 'cli'
         claude = 'claude'
-        claudeInstruction = 'cInst'
-        claudeRule = 'cRule'
-        claudeImport = 'import'
+        claudeGlobalInstruction = 'cGlobal'
+        claudePathInstruction = 'cPath'
         copilot = 'copilot'
         btr = 'btr'
         terminal = 'terminal'
@@ -795,7 +808,7 @@ function Write-DeploymentMatrix {
     }
     $targetOrder = @{
         agent = @('vscode', 'copilotCli', 'claude')
-        instruction = @('vscode', 'copilotCli', 'claudeInstruction', 'claudeRule', 'claudeImport')
+        instruction = @('vscode', 'copilotCli', 'claudeGlobalInstruction', 'claudePathInstruction')
         skill = @('copilot', 'claude')
         link = @('btr', 'terminal', 'claudeCommand', 'claudeDoc')
     }
@@ -1322,13 +1335,25 @@ function Write-ManagedSymlink {
 function Copy-ManagedFile {
     param(
         [string]$Path,
-        [string]$SourcePath
+        [string]$SourcePath,
+        [bool]$ForceOwnedPath = $false
     )
 
     New-Directory (Split-Path -Parent $Path)
     if (-not (Remove-KatManagedPath -Path $Path -RepositoryRoot $repoRoot)) {
-        Add-BlockedPath $Path
-        return $false
+        if ($ForceOwnedPath) {
+            try {
+                Remove-Item -LiteralPath $Path -Force -Recurse -Confirm:$false -ErrorAction Stop
+            }
+            catch {
+                Add-BlockedPath $Path
+                return $false
+            }
+        }
+        else {
+            Add-BlockedPath $Path
+            return $false
+        }
     }
 
     try {
@@ -2000,9 +2025,6 @@ function Get-SkillMeta {
         enabled = [pscustomobject]@{
             copilot = $true
             claude = $true
-        }
-        claude = [pscustomobject]@{
-            exposeCommands = (Test-Path -LiteralPath (Join-Path $Directory.FullName 'commands'))
         }
     }
 }

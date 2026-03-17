@@ -11,8 +11,5 @@
 	"enabled": {
 		"copilot": true,
 		"claude": true
-	},
-	"claude": {
-		"exposeCommands": false
 	}
 }

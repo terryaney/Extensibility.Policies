@@ -58,15 +58,14 @@ Canonical AI content lives under `/AI` and is authored once, then rendered into 
 Each canonical agent lives in `/AI/agents/<id>/`.
 
 - `body.md` is the shared prompt body.
-- `meta.jsonc` holds the renderer-facing metadata: names, descriptions, models, tools, target toggles, Copilot orchestration, Claude target type, and optional repo-local publish roots.
-- `meta.jsonc` is the canonical metadata format. Comments are allowed and stripped by the renderer.
+- `meta.jsonc` holds the renderer-facing metadata: names, descriptions, models, tools, target toggles, Copilot orchestration, and optional repo-local publish roots. Comments are allowed and stripped by the renderer.
 
 ### Instructions
 
 Each canonical instruction lives in `/AI/instructions/<id>/`.
 
 - `body.md` is the shared instruction content.
-- `meta.jsonc` decides where that content is published: VS Code Copilot instructions, Copilot CLI instructions, Claude instructions, Claude rules, and/or imports into generated `CLAUDE.md`.
+- `meta.jsonc` decides where that content is published: VS Code Copilot instructions, Copilot CLI instructions, and one Claude mode at a time (`claudeGlobalInstruction` or `claudePathInstruction`).
 
 ### Skills
 
@@ -75,19 +74,19 @@ Each canonical skill lives in `/AI/skills/<id>/`.
 - `SKILL.md` contains the shared body only.
 - `meta.jsonc` contains publication toggles and frontmatter fields.
 - Supporting files remain beside the skill and are installed into published skill directories as regular folders containing KAT-managed symlinked files.
-- `commands/*.md` are canonical command workflow files. Claude can publish them as commands when `claude.exposeCommands` is enabled, and Copilot renders them as standalone child skills named `<parent>-<command>`.
-- `commands/*.md` are not installed inside published skill folders.
+- `commands/*.md` are canonical command workflow files. If present, they are automatically published to `~/.claude/commands/*.md` for Claude and rendered as standalone child skills named `<parent>-<command>` for Copilot. The `commands` directory is not installed inside published skill folders.
 
 ### Rendered Destinations
 
 The renderer currently targets these install locations:
 
-| Canonical type | VS Code | Copilot CLI | Claude |
+| Canonical Type | VS Code | Copilot CLI | Claude |
 |------|------|------|------|
-| Agents | `%APPDATA%/Code/User/prompts/*.agent.md` or repo-local `.github/agents/*.agent.md` when `publish.repositoryRoot` is set | `~/.copilot/agents/*.agent.md` | `~/.claude/agents/*.md` or repo-local `.claude/agents/*.md` / `.claude/commands/*.md` when `publish.repositoryRoot` is set |
-| Instructions | `%APPDATA%/Code/User/instructions/*.instructions.md` or repo-local `.github/instructions/*.instructions.md` when `publish.repositoryRoot` is set | `~/.copilot/instructions/*.instructions.md` | `~/.claude/instructions/*.md`, `~/.claude/rules/*.md`, and generated `~/.claude/CLAUDE.md` imports, or repo-local `.claude/...` equivalents when `publish.repositoryRoot` is set |
+| Agents | `%APPDATA%/Code/User/prompts/*.agent.md`<sup>1</sup> | `~/.copilot/agents/*.agent.md`<sup>1</sup> | `~/.claude/agents/*.md`<sup>1</sup> |
+| Instructions | `%APPDATA%/Code/User/instructions/*.instructions.md`<sup>1</sup> | `~/.copilot/instructions/*.instructions.md`<sup>1</sup> | `~/.claude/instructions/*.md` and generated `~/.claude/CLAUDE.md` imports for global instructions<br>`~/.claude/rules/*.md`<sup>1</sup> for 'path' restricted instructions |
 | Skills | n/a | `~/.copilot/skills/<id>/` | `~/.claude/skills/<id>/` and optional `~/.claude/commands/*.md` |
-| Terminal | n/a | n/a | n/a, copied into Windows Terminal LocalState |
+
+<sup>1</sup> When `publish.repositoryRoot` is set, the equivalent repo-local path is also published for enabled targets: `.github/agents/*.agent.md`, `.claude/agents/*.md`, `.github/instructions/*.instructions.md`, `.claude/rules/*.md`.
 
 ## Renderer Notes
 
@@ -142,11 +141,11 @@ Path: `/AI/agents/<id>/meta.jsonc`
 | `description` | string | Rendered into Copilot and Claude frontmatter. |
 | `enabled.vscode` | bool | Publishes a VS Code agent prompt. Defaults to `true`. |
 | `enabled.copilotCli` | bool | Publishes a Copilot CLI agent. Defaults to `true`. |
-| `enabled.claude` | bool | Publishes a Claude agent or command. Defaults to `true`. |
+| `enabled.claude` | bool | Publishes a Claude agent. Defaults to `true`. |
 | `models.vscode` | string | VS Code Copilot model. |
 | `models.copilotCli` | string | Copilot CLI model. |
 | `models.claude` | string | Claude model. |
-| `publish.repositoryRoot` | string | If set, publishes VS Code output into `<repo>/.github/agents` and Claude output into `<repo>/.claude/...` instead of user-level folders. |
+| `publish.repositoryRoot` | string | If set, publishes VS Code output into `<repo>/.github/agents` and Claude output into `<repo>/.claude/agents` instead of user-level folders. |
 | `tools.copilot` | string[] | Legacy tool declaration for VS Code and Copilot CLI. |
 | `tools.claude` | string[] or `"auto"` | Legacy Claude declaration. `"auto"` still works but explicit per-client mappings are preferred. |
 | `tools.<toolId>.vscode` | string or string[] | Explicit VS Code mapping for one canonical tool id. Defaults to the tool id when omitted. |
@@ -155,7 +154,6 @@ Path: `/AI/agents/<id>/meta.jsonc`
 | `copilot.userInvocable` | bool | Copilot-only. Rendered as `user-invocable` for Copilot agents. No Claude subagent equivalent exists. |
 | `copilot.agents` | string[] | VS Code Copilot-only orchestration metadata. Omitted from CLI and Claude rendering. |
 | `copilot.handoffs` | object[] | VS Code Copilot-only handoff metadata. Omitted from CLI and Claude rendering. |
-| `claude.target` | string | `agent` or `command`. Defaults to `agent`. |
 | `claude.memory` | string | Claude memory scope: `user`, `project`, or `local`. |
 
 Supported `copilot.handoffs[]` fields:
@@ -178,19 +176,17 @@ Path: `/AI/instructions/<id>/meta.jsonc`
 | `description` | string | Used for Claude rule frontmatter. |
 | `enabled.vscode` | bool | Publishes a VS Code `.instructions.md` file. Defaults to `true`. |
 | `enabled.copilotCli` | bool | Publishes a Copilot CLI `.instructions.md` file. Defaults to `true`. |
-| `enabled.claudeInstruction` | bool | Publishes `~/.claude/instructions/<id>.md` or repo-local `.claude/instructions/<id>.md`. |
-| `enabled.claudeRule` | bool | Publishes `~/.claude/rules/<id>.md` or repo-local `.claude/rules/<id>.md`. |
-| `enabled.claudeImport` | bool | Adds `@instructions/<id>.md` to generated `CLAUDE.md`. |
+| `enabled.claudeGlobalInstruction` | bool | Publishes `~/.claude/instructions/<id>.md` and adds `@instructions/<id>.md` to generated `CLAUDE.md` (or repo-local `.claude/...` when `publish.repositoryRoot` is set). |
+| `enabled.claudePathInstruction` | bool | Publishes `~/.claude/rules/<id>.md` (or repo-local `.claude/rules/<id>.md` when `publish.repositoryRoot` is set). |
 | `publish.repositoryRoot` | string | If set, publishes VS Code output into `<repo>/.github/instructions` and Claude output into `<repo>/.claude/...` instead of user-level folders. |
 | `scope.copilot` | string | Rendered as Copilot `applyTo`. Defaults to `**`. |
-| `scope.claude` | string[] | Rendered as Claude rule `paths`. It does not affect imported Claude instructions. |
+| `scope.claude` | string[] | Rendered as Claude rule `paths` for `claudePathInstruction`. It does not affect `claudeGlobalInstruction`. |
 
-Claude instruction modes are different and should not be enabled blindly:
+Claude instruction modes are mutually exclusive:
 
-- `claudeInstruction` writes the raw instruction file into `.claude/instructions`.
-- `claudeImport` makes that instruction active by importing it from generated `CLAUDE.md`.
-- `claudeRule` publishes the same content as a Claude rule with `paths`, which is only useful when rule scoping is intentional.
-- For instruction sets that are meant to mirror Copilot `applyTo`, prefer `claudeRule` over `claudeInstruction` because Claude rule `paths` is the closest equivalent.
+- `claudeGlobalInstruction` writes `.claude/instructions/<id>.md` and includes it in generated `CLAUDE.md` imports.
+- `claudePathInstruction` writes `.claude/rules/<id>.md` with explicit `paths`.
+- If both are enabled, the renderer publishes only `claudePathInstruction` and emits a compatibility warning.
 - Claude instruction and rule outputs do not currently use a `model` frontmatter field in this renderer. Claude `model` metadata is only emitted for agents.
 
 Claude agent rendering note:
@@ -199,9 +195,10 @@ Claude agent rendering note:
 
 Recommended usage:
 
-- Use `claudeInstruction: true` plus `claudeImport: true` for global always-on instructions.
-- Use `claudeRule: true` only for path-scoped or conditional Claude behavior.
-- Do not combine `claudeImport` with `claudeRule` and `scope.claude = ["**"]` unless you intentionally want duplicated instruction loading.
+- Use `claudeGlobalInstruction: true` for global always-on instructions.
+- Use `claudePathInstruction: true` for path-scoped or conditional Claude behavior.
+- Enable only one Claude mode per instruction.
+- Set `publish.repositoryRoot` when you want repo-local `.claude/...` output instead of user-level output.
 
 #### Skill Metadata
 
@@ -218,7 +215,6 @@ Path: `/AI/skills/<id>/meta.jsonc`
 | `enabled.copilot` | bool | Publishes to Copilot CLI. Defaults to `true`. |
 | `enabled.claude` | bool | Publishes to Claude. Defaults to `true`. |
 | `copilot.excludeCommands` | string[] | Optional list of canonical command file basenames to skip when generating Copilot child skills. |
-| `claude.exposeCommands` | bool | If `true`, renders `commands/*.md` into `~/.claude/commands`. |
 
 Canonical skill markdown supports optional client markers for small wording differences inside shared content:
 
@@ -242,7 +238,7 @@ If a canonical skill has a `commands/*.md` folder, Copilot publishing also gener
 - Explicit per-client tool mappings are supported and are now preferred over opaque Claude `"auto"` mapping.
 - Claude Context7 support is emitted explicitly when a `context7` MCP server is present in `.claude.json`.
 - The renderer still accepts legacy metadata shapes where practical, but new work should use the explicit schema.
-- The `kat` instruction now uses `claudeInstruction + claudeImport` without a duplicate global Claude rule.
+- The `kat` instruction now uses `claudeGlobalInstruction` without a duplicate global Claude rule.
 
 ## Compatibility Notes
 
@@ -259,8 +255,8 @@ Both are rendered from the same canonical agent metadata, but they do not load t
 
 Claude has a different artifact model from Copilot.
 
-- Claude agents are subagents with their own model, tools, memory, and target type.
-- Claude commands are slash-invoked Markdown files, currently published only from skill `commands/*.md` when `claude.exposeCommands` is enabled.
+- Claude agents are subagents with their own model, tools, and memory.
+- Claude commands are slash-invoked Markdown files. If a skill has a `commands/*.md` folder, commands are automatically published to `~/.claude/commands`.
 - Claude skills are reusable capability packs under `~/.claude/skills`.
 - Claude agent frontmatter has no equivalent to Copilot `userInvocable: false`.
 - Claude skills do have invocation controls such as `user-invocable` and `disable-model-invocation`, but those are skill-level concerns, not subagent frontmatter.

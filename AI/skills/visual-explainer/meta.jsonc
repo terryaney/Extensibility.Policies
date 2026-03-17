@@ -18,8 +18,5 @@
 		"excludeCommands": [
 			"share"
 		]
-	},
-	"claude": {
-		"exposeCommands": true
 	}
 }

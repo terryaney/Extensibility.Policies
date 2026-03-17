@@ -5,9 +5,8 @@
 	"enabled": {
 		"vscode": true,
 		"copilotCli": true,
-		"claudeInstruction": true,
-		"claudeRule": false,
-		"claudeImport": true
+		"claudeGlobalInstruction": true,
+		"claudePathInstruction": false
 	},
 	"scope": {
 		"copilot": "**",
