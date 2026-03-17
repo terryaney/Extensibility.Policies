@@ -77,7 +77,7 @@ Each canonical skill lives in `/AI/skills/<id>/`.
 - `SKILL.md` contains the shared body only.
 - `meta.jsonc` uses the shared metadata shape plus skill-specific fields such as `license`, `compatibility`, `metadata`, and `skills.excludeCommands.copilot`.
 - Supporting files remain beside the skill and are installed into published skill directories as regular folders containing KAT-managed copied files.
-- `commands/*.md` are canonical command workflow files. If present, they are automatically nested in `~/.claude/skills/{id}/commands/` for Claude and rendered as standalone child skills for Copilot with a filesystem-safe folder id `<skill>-<command>` and a published skill name `<skill>:<command>`.
+- `commands/*.md` are canonical command workflow files. If present, they are automatically nested in `~/.claude/skills/{id}/commands/` for Claude and rendered as standalone child skills for Copilot with a filesystem-safe folder id `<skill>-<command>` and a published skill name `<skill>.<command>`.
 
 ### Rendered Destinations
 
@@ -87,10 +87,10 @@ The renderer currently targets these install locations:
 |------|------|------|------|
 | Agents | `%APPDATA%/Code/User/prompts/*.agent.md`<sup>1</sup> | `~/.copilot/agents/*.agent.md`<sup>1</sup> | `~/.claude/agents/*.md`<sup>1</sup> |
 | Instructions | `%APPDATA%/Code/User/instructions/*.instructions.md`<sup>1</sup> | `~/.copilot/instructions/*.instructions.md`<sup>1</sup> | `~/.claude/instructions/*.md` and generated `~/.claude/CLAUDE.md` imports for global instructions, or `~/.claude/rules/*.md`<sup>1</sup> for path-scoped instructions |
-| Skills | n/a | `~/.copilot/skills/<id>/`<sup>2</sup> | `~/.claude/skills/<id>/` |
+| Skills | n/a | `~/.copilot/skills/<id>/`<sup>2</sup> | `~/.claude/skills/<id>/`<sup>2</sup> |
 
 <sup>1</sup> When `enabled.repositories` includes repo-local targets, the equivalent repo paths are also published for supported clients: `.github/agents/*.agent.md`, `.claude/agents/*.md`, `.github/instructions/*.instructions.md`, and either `.claude/instructions/*.md` plus generated `.claude/CLAUDE.md` imports for global instructions or `.claude/rules/*.md` for path-scoped instructions.
-<sup>2</sup> If a canonical skill has a `commands/*.md` folder, standalone child skills are also published under `~/.copilot/skills/<parent>-<command>/` with the published skill name `<parent>:<command>`.
+<sup>2</sup> When `enabled.repositories` includes repo-local targets for a skill, Copilot skill output is published under `.github/skills/<id>/` and Claude skill output under `.claude/skills/<id>/`. If a canonical skill has a `commands/*.md` folder, Copilot child skills are also published under `skills/<parent>-<command>/` with the published skill name `<parent>.<command>`, and Claude command markdown is nested under `skills/<parent>/commands/`.
 
 ## Renderer Notes
 
@@ -178,7 +178,7 @@ Claude-only text.
 
 The renderer strips these markers during publishing so each client receives only its relevant block.
 
-If a canonical skill has a `commands/*.md` folder, Copilot publishing also generates standalone child skill folders named `<parent>-<command>`. Their published skill name is `<parent>:<command>`, so a command can be invoked as `/visual-explainer:diff-review`. Copilot skill installs do not include a `commands` folder.
+If a canonical skill has a `commands/*.md` folder, Copilot publishing also generates standalone child skill folders named `<parent>-<command>`. Their published skill name is `<parent>.<command>`, so a command can be invoked as `/visual-explainer.diff-review`. Copilot skill installs do not include a `commands` folder.
 
 ### Target Schema Notes
 

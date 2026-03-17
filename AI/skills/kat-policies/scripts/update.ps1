@@ -146,6 +146,41 @@ function Get-InstructionRepositoryManagedContexts {
     })
 }
 
+function Get-SkillRepositoryManagedContexts {
+    param([object[]]$Definitions)
+
+    $contextsByRoot = @{}
+
+    foreach ($definition in $Definitions) {
+        foreach ($repositoryRoot in $definition.Repositories) {
+            if ([string]::IsNullOrWhiteSpace($repositoryRoot)) {
+                continue
+            }
+
+            if (-not $contextsByRoot.ContainsKey($repositoryRoot)) {
+                $contextsByRoot[$repositoryRoot] = New-Object System.Collections.Generic.List[string]
+            }
+
+            foreach ($scanRoot in @(
+                    (Join-Path $repositoryRoot '.github\skills'),
+                    (Join-Path $repositoryRoot '.claude\skills')))
+            {
+                if (-not $contextsByRoot[$repositoryRoot].Contains($scanRoot)) {
+                    $contextsByRoot[$repositoryRoot].Add($scanRoot)
+                }
+            }
+        }
+    }
+
+    return @($contextsByRoot.Keys | Sort-Object | ForEach-Object {
+        @{
+            Root = $_
+            ScanRoots = @($contextsByRoot[$_])
+            CollapseEmptyToRoot = $_
+        }
+    })
+}
+
 function Get-EnvironmentRoots {
     New-Item -ItemType Directory -Path 'C:\BTR' -Force | Out-Null
 
@@ -174,7 +209,8 @@ function Get-ManagedContexts {
     param(
         [object]$Roots,
         [object[]]$AgentDefinitions,
-        [object[]]$InstructionDefinitions
+        [object[]]$InstructionDefinitions,
+        [object[]]$SkillDefinitions
     )
 
     $managedContexts = @(
@@ -186,6 +222,7 @@ function Get-ManagedContexts {
 
     $managedContexts += @(Get-AgentRepositoryManagedContexts -Definitions $AgentDefinitions)
     $managedContexts += @(Get-InstructionRepositoryManagedContexts -Definitions $InstructionDefinitions)
+    $managedContexts += @(Get-SkillRepositoryManagedContexts -Definitions $SkillDefinitions)
 
     if ($Roots.TerminalRoot) {
         $managedContexts += @{ Root = $Roots.TerminalRoot; ScanRoots = @($Roots.TerminalRoot) }
@@ -452,54 +489,95 @@ function Publish-Skills {
     foreach ($definition in $Definitions) {
         $enabled = $definition.Enabled
         $id = $definition.Id
+        $skillRepositories = @($definition.Repositories)
 
         if (ConvertTo-BoolValue (Get-Prop $enabled 'copilot') $true) {
             $copilotDefinition = New-CopilotSkillDefinition -SkillDefinition $definition
-            $succeeded = Install-RenderedSkill -Root $Roots.CopilotRoot -SkillDefinition $copilotDefinition -Target 'copilot'
-            Add-DeploymentRecord -Category 'skill' -Id $id -Target 'copilot' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path (Join-Path (Join-Path $Roots.CopilotRoot 'skills') $id)
+            $publishTargets = New-Object System.Collections.Generic.List[string]
+            $succeeded = $true
 
-            foreach ($commandDefinition in (Get-CopilotCommandSkillDefinitions -SkillDefinition $definition)) {
-                $commandSucceeded = Install-RenderedSkill -Root $Roots.CopilotRoot -SkillDefinition $commandDefinition -Target 'copilot'
-                $commandArtifactId = [string](Get-Prop $commandDefinition.Meta 'name')
-                if ([string]::IsNullOrWhiteSpace($commandArtifactId)) {
-                    $commandArtifactId = $commandDefinition.Id
-                }
-                Add-DeploymentRecord -Category 'skill' -Id $commandArtifactId -Target 'copilot' -Status $(if ($commandSucceeded) { 'ok' } else { 'blocked' }) -Path (Join-Path (Join-Path $Roots.CopilotRoot 'skills') $commandDefinition.Id)
+            $copilotRoots = if ($skillRepositories.Count -eq 0) {
+                @($Roots.CopilotRoot)
             }
+            else {
+                @($skillRepositories | ForEach-Object { Join-Path $_ '.github' })
+            }
+
+            foreach ($copilotRoot in $copilotRoots) {
+                $targetDirectory = if ($copilotRoot.Equals($Roots.CopilotRoot, [StringComparison]::OrdinalIgnoreCase)) {
+                    Join-Path (Join-Path $copilotRoot 'skills') $id
+                }
+                else {
+                    Join-Path (Join-Path $copilotRoot 'skills') $id
+                }
+
+                $publishTargets.Add($targetDirectory)
+                $succeeded = (Install-RenderedSkill -Root $copilotRoot -SkillDefinition $copilotDefinition -Target 'copilot') -and $succeeded
+
+                foreach ($commandDefinition in (Get-CopilotCommandSkillDefinitions -SkillDefinition $definition)) {
+                    $commandSucceeded = Install-RenderedSkill -Root $copilotRoot -SkillDefinition $commandDefinition -Target 'copilot'
+                    $commandArtifactId = [string](Get-Prop $commandDefinition.Meta 'name')
+                    if ([string]::IsNullOrWhiteSpace($commandArtifactId)) {
+                        $commandArtifactId = $commandDefinition.Id
+                    }
+
+                    $commandPath = Join-Path (Join-Path $copilotRoot 'skills') $commandDefinition.Id
+                    Add-DeploymentRecord -Category 'skill' -Id $commandArtifactId -Target 'copilot' -Status $(if ($commandSucceeded) { 'ok' } else { 'blocked' }) -Path $commandPath -Detail $(if ($skillRepositories.Count -gt 1) { "paths=$($copilotRoots.Count)" } else { $null })
+                    $succeeded = $commandSucceeded -and $succeeded
+                }
+            }
+
+            $deploymentPath = if ($publishTargets.Count -gt 0) { $publishTargets -join '; ' } else { $null }
+            Add-DeploymentRecord -Category 'skill' -Id $id -Target 'copilot' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $deploymentPath -Detail $(if ($skillRepositories.Count -gt 1) { "paths=$($publishTargets.Count)" } else { $null })
         }
         else {
             Add-DeploymentRecord -Category 'skill' -Id $id -Target 'copilot' -Status 'disabled'
         }
 
         if (ConvertTo-BoolValue (Get-Prop $enabled 'claude') $true) {
-            $skillPath = Join-Path (Join-Path $Roots.ClaudeRoot 'skills') $id
             $claudeDefinition = New-ClaudeSkillDefinition -SkillDefinition $definition
-            $skillSucceeded = Install-RenderedSkill -Root $Roots.ClaudeRoot -SkillDefinition $claudeDefinition -Target 'claude'
             $commandsSucceeded = $true
+            $publishTargets = New-Object System.Collections.Generic.List[string]
+            $skillSucceeded = $true
 
-            if ($definition.CommandFiles.Count -gt 0) {
-                foreach ($commandFile in $definition.CommandFiles) {
-                    $commandName = [System.IO.Path]::GetFileNameWithoutExtension($commandFile.Name)
-                    $commandArtifactId = "${id}:$commandName"
-                    $commandPath = Join-Path (Join-Path (Join-Path $Roots.ClaudeRoot 'skills') $id 'commands') $commandFile.Name
-                    $commandSucceeded = $false
+            $claudeRoots = if ($skillRepositories.Count -eq 0) {
+                @($Roots.ClaudeRoot)
+            }
+            else {
+                @($skillRepositories | ForEach-Object { Join-Path $_ '.claude' })
+            }
 
-                    if ($skillSucceeded) {
-                        $commandContent = Resolve-ClientMarkdown -Content (Get-Content -LiteralPath $commandFile.FullName -Raw) -Client 'claude'
-                        $commandSucceeded = Write-ManagedFile -Path $commandPath -Content $commandContent
+            foreach ($claudeRoot in $claudeRoots) {
+                $skillPath = Join-Path (Join-Path $claudeRoot 'skills') $id
+                $publishTargets.Add($skillPath)
+                $targetSkillSucceeded = Install-RenderedSkill -Root $claudeRoot -SkillDefinition $claudeDefinition -Target 'claude'
+                $skillSucceeded = $targetSkillSucceeded -and $skillSucceeded
+
+                if ($definition.CommandFiles.Count -gt 0) {
+                    foreach ($commandFile in $definition.CommandFiles) {
+                        $commandName = [System.IO.Path]::GetFileNameWithoutExtension($commandFile.Name)
+                        $commandArtifactId = "${id}.$commandName"
+                        $commandPath = Join-Path (Join-Path (Join-Path $claudeRoot 'skills') $id 'commands') $commandFile.Name
+                        $commandSucceeded = $false
+
+                        if ($targetSkillSucceeded) {
+                            $commandContent = Resolve-ClientMarkdown -Content (Get-Content -LiteralPath $commandFile.FullName -Raw) -Client 'claude'
+                            $commandSucceeded = Write-ManagedFile -Path $commandPath -Content $commandContent
+                        }
+
+                        $commandsSucceeded = $commandsSucceeded -and $commandSucceeded
+                        Add-DeploymentRecord -Category 'skill' -Id $commandArtifactId -Target 'claude' -Status $(if ($commandSucceeded) { 'ok' } else { 'blocked' }) -Path $commandPath -Detail $(if ($targetSkillSucceeded) { $null } else { 'skill-publish-failed' })
                     }
-
-                    $commandsSucceeded = $commandsSucceeded -and $commandSucceeded
-                    Add-DeploymentRecord -Category 'skill' -Id $commandArtifactId -Target 'claude' -Status $(if ($commandSucceeded) { 'ok' } else { 'blocked' }) -Path $commandPath -Detail $(if ($skillSucceeded) { $null } else { 'skill-publish-failed' })
-                }
-
-                if (-not $commandsSucceeded) {
-                    Add-Warning "${id}: One or more Claude commands were not published. See the deployment matrix for details."
                 }
             }
 
+            if ($definition.CommandFiles.Count -gt 0 -and -not $commandsSucceeded) {
+                Add-Warning "${id}: One or more Claude commands were not published. See the deployment matrix for details."
+            }
+
             $claudeSucceeded = $skillSucceeded -and $commandsSucceeded
-            Add-DeploymentRecord -Category 'skill' -Id $id -Target 'claude' -Status $(if ($claudeSucceeded) { 'ok' } else { 'blocked' }) -Path $skillPath -Detail $(if ($claudeSucceeded) { $null } elseif (-not $skillSucceeded) { 'skill-publish-failed' } else { 'command-publish-failed' })
+            $deploymentPath = if ($publishTargets.Count -gt 0) { $publishTargets -join '; ' } else { $null }
+            Add-DeploymentRecord -Category 'skill' -Id $id -Target 'claude' -Status $(if ($claudeSucceeded) { 'ok' } else { 'blocked' }) -Path $deploymentPath -Detail $(if ($claudeSucceeded) { $(if ($skillRepositories.Count -gt 1) { "paths=$($publishTargets.Count)" } else { $null }) } elseif (-not $skillSucceeded) { 'skill-publish-failed' } else { 'command-publish-failed' })
         }
         else {
             Add-DeploymentRecord -Category 'skill' -Id $id -Target 'claude' -Status 'disabled'
@@ -571,7 +649,7 @@ function Invoke-PolicySync {
     $instructionDefinitions = Get-InstructionDefinitions
     $skillDefinitions = Get-SkillDefinitionsWithContent
 
-    $managedContexts = Get-ManagedContexts -Roots $roots -AgentDefinitions $agentDefinitions -InstructionDefinitions $instructionDefinitions
+    $managedContexts = Get-ManagedContexts -Roots $roots -AgentDefinitions $agentDefinitions -InstructionDefinitions $instructionDefinitions -SkillDefinitions $skillDefinitions
     foreach ($context in $managedContexts) {
         $collapseEmptyToRoot = $null
         if ($context -is [System.Collections.IDictionary] -and $context.Contains('CollapseEmptyToRoot')) {
@@ -1919,7 +1997,7 @@ function Get-CopilotCommandSkillDefinitions {
         }
 
         $commandFolderId = $SkillDefinition.Id + '-' + $commandName
-        $commandDisplayName = $SkillDefinition.Id + ':' + $commandName
+        $commandDisplayName = $SkillDefinition.Id + '.' + $commandName
         $resolvedCommandContent = Resolve-ClientMarkdown -Content (Get-Content -LiteralPath $commandFile.FullName -Raw) -Client 'copilot'
         $commandDocument = Split-MarkdownFrontmatter -Content $resolvedCommandContent
 
@@ -2206,6 +2284,7 @@ function Get-SkillDefinitionsWithContent {
             Enabled = Get-Prop $meta 'enabled'
             Id = Get-Prop $meta 'id' $skillDir.Name
             ClaudeMeta = Get-Prop $meta 'claude'
+            Repositories = @(Get-EnabledRepositories -Meta $meta)
             CommandFiles = $commandFiles
         }
     }

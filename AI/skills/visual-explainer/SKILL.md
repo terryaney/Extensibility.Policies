@@ -7,10 +7,10 @@ Generate self-contained HTML files for technical diagrams, visualizations, and d
 ## Available Commands
 
 <!-- claude:start -->
-Detailed prompt templates in `./commands/`. Invoke each as a namespaced slash command: `/visual-explainer:diff-review`, `/visual-explainer:plan-review`, `/visual-explainer:project-recap`, `/visual-explainer:generate-web-diagram`, `/visual-explainer:generate-visual-plan`, `/visual-explainer:generate-slides`, and `/visual-explainer:fact-check`.
+Detailed prompt templates in `./commands/`. Invoke each as a namespaced slash command: `/visual-explainer.diff-review`, `/visual-explainer.plan-review`, `/visual-explainer.project-recap`, `/visual-explainer.generate-web-diagram`, `/visual-explainer.generate-visual-plan`, `/visual-explainer.generate-slides`, and `/visual-explainer.fact-check`.
 <!-- claude:end -->
 <!-- copilot:start -->
-Detailed prompt templates are available via skills. Invoke each as a namespaced slash command: `/visual-explainer:diff-review`, `/visual-explainer:plan-review`, `/visual-explainer:project-recap`, `/visual-explainer:generate-web-diagram`, `/visual-explainer:generate-visual-plan`, `/visual-explainer:generate-slides`, and `/visual-explainer:fact-check`.
+Detailed prompt templates are available via skills. Invoke each as a namespaced slash command: `/visual-explainer.diff-review`, `/visual-explainer.plan-review`, `/visual-explainer.project-recap`, `/visual-explainer.generate-web-diagram`, `/visual-explainer.generate-visual-plan`, `/visual-explainer.generate-slides`, and `/visual-explainer.fact-check`.
 <!-- copilot:end -->
 
 | Command | What it does |
@@ -312,7 +312,7 @@ Use these sparingly within visual pages to highlight key points or provide breat
 
 ## Slide Deck Mode
 
-An alternative output format for presenting content as a magazine-quality slide presentation instead of a scrollable page. **Opt-in only** — the agent generates slides when the user invokes `/visual-explainer:generate-slides`, passes `--slides` to an existing visual-explainer workflow (for example `/visual-explainer:diff-review --slides`), or explicitly asks for a slide deck. Never auto-select slide format.
+An alternative output format for presenting content as a magazine-quality slide presentation instead of a scrollable page. **Opt-in only** — the agent generates slides when the user invokes `/visual-explainer.generate-slides`, passes `--slides` to an existing visual-explainer workflow (for example `/visual-explainer.diff-review --slides`), or explicitly asks for a slide deck. Never auto-select slide format.
 
 **Before generating slides**, read `./references/slide-patterns.md` (engine CSS, slide types, transitions, nav chrome, presets) and `./templates/slide-deck.html` (reference template showing all 10 types). Also read `./references/css-patterns.md` for shared patterns and `./references/libraries.md` for Mermaid/Chart.js theming.
 
@@ -328,7 +328,7 @@ An alternative output format for presenting content as a magazine-quality slide 
 
 **Curated presets:** Four slide-specific presets as starting points (Midnight Editorial, Warm Signal, Terminal Mono, Swiss Clean) plus the existing 8 aesthetic directions adapted for slides. Pick one and commit. See `slide-patterns.md` for preset CSS values.
 
-**`--slides` flag on existing prompts:** When a user passes `--slides` to `/visual-explainer:diff-review`, `/visual-explainer:plan-review`, `/visual-explainer:project-recap`, or another visual-explainer prompt, the agent gathers data using the prompt's normal data-gathering instructions, then presents the content as a slide deck instead of a scrollable page. The slide version tells the same story with different structure and pacing — but the same breadth of coverage. Don't use the slide format as an excuse to summarize or skip sections that the scrollable version would have included.
+**`--slides` flag on existing prompts:** When a user passes `--slides` to `/visual-explainer.diff-review`, `/visual-explainer.plan-review`, `/visual-explainer.project-recap`, or another visual-explainer prompt, the agent gathers data using the prompt's normal data-gathering instructions, then presents the content as a slide deck instead of a scrollable page. The slide version tells the same story with different structure and pacing — but the same breadth of coverage. Don't use the slide format as an excuse to summarize or skip sections that the scrollable version would have included.
 
 ## File Structure
 
@@ -359,7 +359,7 @@ Every diagram is a single self-contained `.html` file. No external assets except
 
 Share visual explainer pages instantly via Vercel. No account or authentication required.
 
-**Usage:** Invoke `/visual-explainer:share <html-file>`.
+**Usage:** Invoke `/visual-explainer.share <html-file>`.
 ```bash
 bash {{skill_dir}}/scripts/share.sh <html-file>
 ```
