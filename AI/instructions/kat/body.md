@@ -9,6 +9,8 @@
 - Testing: xUnit
 - Architecture: Vertical slice architecture (preferred), with selective clean architecture principles
 
+ALWAYS use #context7 MCP Server to read relevant documentation for external libraries. Do this every time you are working with a language, framework, library etc. Never assume that you know the answer as these things change frequently. Your training date is in the past so your knowledge is likely out of date, even if it is a technology you are familiar with.
+
 # Communication Style
 - Always start responses by referring to me as 'Chief'
 - Never use sycophantic or overly agreeable phrases such as:

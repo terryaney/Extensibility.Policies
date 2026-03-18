@@ -26,6 +26,14 @@ Stop processing if Developer Mode is not enabled.
 & "C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\update.ps1"
 ```
 
+`update.ps1` automatically runs the remote-only Context7 bootstrap helper when canonical metadata requires Context7 parity. This bootstrap always requires `CONTEXT7_API_KEY` in environment scope (`Process`, `User`, or `Machine`) and fails fast when missing.
+
+Optional dry run preview for Context7 bootstrap only (no file writes):
+
+```powershell
+& "C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\install-context7-remote.ps1" -WhatIf
+```
+
 4. Try to review the users VS Code User Settings.  VS Code's Copilot tries to read AI primitives in the 'Claude' and 'Copilot CLI' folders too, so the following settings should be applied to eliminate duplicates.
 
 ```json

@@ -656,11 +656,75 @@ function Write-SyncReport {
     }
 }
 
+function Test-Context7ParityRequested {
+    param([object[]]$AgentDefinitions)
+
+    foreach ($definition in $AgentDefinitions) {
+        foreach ($toolId in (Get-ConfiguredCanonicalTools -Meta $definition.Meta)) {
+            if ($toolId -like 'io.github.upstash/context7/*') {
+                return $true
+            }
+        }
+    }
+
+    return $false
+}
+
+function Invoke-Context7RemoteBootstrap {
+    $helperScriptPath = Join-Path $PSScriptRoot 'install-context7-remote.ps1'
+    if (-not (Test-Path -LiteralPath $helperScriptPath)) {
+        throw "Context7 bootstrap helper script is missing: $helperScriptPath"
+    }
+
+    Write-Host 'Checking Context7 MCP Server compliance...' -ForegroundColor Cyan
+    $checkResult = & $helperScriptPath -CheckOnly -PassThru
+
+    $isCompliant = [bool](Get-Prop $checkResult 'IsCompliant' $false)
+    $hasBlocked = [bool](Get-Prop $checkResult 'HasBlocked' $false)
+    $requiresInstall = [bool](Get-Prop $checkResult 'RequiresInstall' $false)
+
+    if ($isCompliant) {
+        Write-Host 'Context7 MCP Server is already compliant.' -ForegroundColor Green
+        return
+    }
+
+    if ($hasBlocked) {
+        Write-Host 'Context7 MCP Server compliance check reported blocked entries. Install may still require manual intervention.' -ForegroundColor Yellow
+    }
+
+    $shouldInstall = $true
+    $isInteractiveHost = [Environment]::UserInteractive -and $Host.Name -ne 'ServerRemoteHost'
+    if ($isInteractiveHost) {
+		Write-Host ''
+        $choice = Read-Host 'Context7 MCP Server is not compliant.  It has to installed for each client in Remote mode vs Local mode. Install Context7 MCP Server in Remote mode now? [Y/n]'
+        if ($choice -match '^(n|no)$') {
+            $shouldInstall = $false
+        }
+    }
+
+    if (-not $shouldInstall) {
+        Add-Warning 'Context7 MCP Server requested by KAT Policies, but installation was skipped by the user.'
+        Write-Host 'Skipped Context7 MCP Server installation at user request.' -ForegroundColor Yellow
+        return
+    }
+
+    if ($requiresInstall -or $hasBlocked) {
+        Write-Host 'Running Context7 MCP Server installation...' -ForegroundColor Cyan
+    }
+
+    $applyResult = & $helperScriptPath -PassThru
+    $applyBlocked = [bool](Get-Prop $applyResult 'HasBlocked' $false)
+    if ($applyBlocked) {
+        throw 'Context7 MCP Server installation did not complete successfully. Review the summary above.'
+    }
+}
+
 function Invoke-PolicySync {
     $roots = Get-EnvironmentRoots
     $agentDefinitions = Get-AgentDefinitions
     $instructionDefinitions = Get-InstructionDefinitions
     $skillDefinitions = Get-SkillDefinitionsWithContent
+    $context7ParityRequested = Test-Context7ParityRequested -AgentDefinitions $agentDefinitions
 
     $managedContexts = Get-ManagedContexts -Roots $roots -AgentDefinitions $agentDefinitions -InstructionDefinitions $instructionDefinitions -SkillDefinitions $skillDefinitions
     foreach ($context in $managedContexts) {
@@ -679,6 +743,10 @@ function Invoke-PolicySync {
     Publish-Skills -Roots $roots -Definitions $skillDefinitions
     Publish-ClaudeDocument -Roots $roots -InstructionPublishResult $instructionPublishResult -Definitions $instructionDefinitions
     Write-SyncReport
+
+    if ($context7ParityRequested) {
+        Invoke-Context7RemoteBootstrap
+    }
 }
 
 function New-AsciiBorder {
