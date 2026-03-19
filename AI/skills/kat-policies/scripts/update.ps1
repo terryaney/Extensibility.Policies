@@ -4,6 +4,9 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path
 $aiRoot = Join-Path $repoRoot 'AI'
 $sharedMappingsPath = Join-Path $PSScriptRoot 'meta.mappings.jsonc'
+$sharedModulePath = Join-Path $PSScriptRoot 'Kat.Policy.Mcp.psm1'
+
+Import-Module $sharedModulePath -Force
 
 $compatibilityMessages = New-Object System.Collections.Generic.List[string]
 $blockedPaths = New-Object System.Collections.Generic.List[string]
@@ -188,7 +191,10 @@ function Get-EnvironmentRoots {
     $copilotRoot = Join-Path $env:USERPROFILE '.copilot'
     $claudeRoot = Join-Path $env:USERPROFILE '.claude'
 
-    $wtPackage = Get-AppxPackage -Name 'Microsoft.WindowsTerminal' -ErrorAction SilentlyContinue
+    $wtPackage = $null
+    if (Get-Command Get-AppxPackage -ErrorAction SilentlyContinue) {
+        $wtPackage = Get-AppxPackage -Name 'Microsoft.WindowsTerminal' -ErrorAction SilentlyContinue
+    }
     $terminalRoot = $null
     if ($wtPackage) {
         $terminalRoot = Join-Path $env:LOCALAPPDATA "Packages\$($wtPackage.PackageFamilyName)\LocalState"
@@ -670,6 +676,46 @@ function Test-Context7ParityRequested {
     return $false
 }
 
+function Test-GitHubParityRequested {
+    param([object[]]$AgentDefinitions)
+
+    foreach ($definition in $AgentDefinitions) {
+        foreach ($toolId in (Get-ConfiguredCanonicalTools -Meta $definition.Meta)) {
+            if ($toolId -like 'github/*') {
+                return $true
+            }
+        }
+    }
+
+    return $false
+}
+
+function Write-BootstrapNoClientWarnings {
+    param(
+        [string]$ProductName,
+        [object]$CheckResult
+    )
+
+    $checkResults = @((Get-Prop $CheckResult 'Results'))
+    foreach ($result in $checkResults) {
+        if ($null -eq $result) {
+            continue
+        }
+
+        $status = [string](Get-Prop $result 'Status')
+        if ($status -ine 'no-client') {
+            continue
+        }
+
+        $client = [string](Get-Prop $result 'Client')
+        if ([string]::IsNullOrWhiteSpace($client)) {
+            $client = 'unknown client'
+        }
+
+        Add-Warning "$ProductName MCP setup: skipped $client because no client installation was detected."
+    }
+}
+
 function Invoke-Context7RemoteBootstrap {
     $helperScriptPath = Join-Path $PSScriptRoot 'install-context7-remote.ps1'
     if (-not (Test-Path -LiteralPath $helperScriptPath)) {
@@ -682,6 +728,8 @@ function Invoke-Context7RemoteBootstrap {
     $isCompliant = [bool](Get-Prop $checkResult 'IsCompliant' $false)
     $hasBlocked = [bool](Get-Prop $checkResult 'HasBlocked' $false)
     $requiresInstall = [bool](Get-Prop $checkResult 'RequiresInstall' $false)
+
+    Write-BootstrapNoClientWarnings -ProductName 'Context7' -CheckResult $checkResult
 
     if ($isCompliant) {
         Write-Host 'Context7 MCP Server is already compliant.' -ForegroundColor Green
@@ -719,12 +767,64 @@ function Invoke-Context7RemoteBootstrap {
     }
 }
 
+function Invoke-GitHubRemoteBootstrap {
+    $helperScriptPath = Join-Path $PSScriptRoot 'install-github-remote.ps1'
+    if (-not (Test-Path -LiteralPath $helperScriptPath)) {
+        throw "GitHub bootstrap helper script is missing: $helperScriptPath"
+    }
+
+    Write-Host 'Checking GitHub MCP Server compliance...' -ForegroundColor Cyan
+    $checkResult = & $helperScriptPath -CheckOnly -PassThru
+
+    $isCompliant = [bool](Get-Prop $checkResult 'IsCompliant' $false)
+    $hasBlocked = [bool](Get-Prop $checkResult 'HasBlocked' $false)
+    $requiresInstall = [bool](Get-Prop $checkResult 'RequiresInstall' $false)
+
+    Write-BootstrapNoClientWarnings -ProductName 'GitHub' -CheckResult $checkResult
+
+    if ($isCompliant) {
+        Write-Host 'GitHub MCP Server is already compliant.' -ForegroundColor Green
+        return
+    }
+
+    if ($hasBlocked) {
+        Write-Host 'GitHub MCP Server compliance check reported blocked entries. Install may still require manual intervention.' -ForegroundColor Yellow
+    }
+
+    $shouldInstall = $true
+    $isInteractiveHost = [Environment]::UserInteractive -and $Host.Name -ne 'ServerRemoteHost'
+    if ($isInteractiveHost) {
+		Write-Host ''
+        $choice = Read-Host 'GitHub MCP Server is not compliant. Install/enforce GitHub MCP remote setup now? [Y/n]'
+        if ($choice -match '^(n|no)$') {
+            $shouldInstall = $false
+        }
+    }
+
+    if (-not $shouldInstall) {
+        Add-Warning 'GitHub MCP Server requested by KAT Policies, but installation was skipped by the user.'
+        Write-Host 'Skipped GitHub MCP Server installation at user request.' -ForegroundColor Yellow
+        return
+    }
+
+    if ($requiresInstall -or $hasBlocked) {
+        Write-Host 'Running GitHub MCP Server installation...' -ForegroundColor Cyan
+    }
+
+    $applyResult = & $helperScriptPath -PassThru
+    $applyBlocked = [bool](Get-Prop $applyResult 'HasBlocked' $false)
+    if ($applyBlocked) {
+        throw 'GitHub MCP Server installation did not complete successfully. Review the summary above.'
+    }
+}
+
 function Invoke-PolicySync {
     $roots = Get-EnvironmentRoots
     $agentDefinitions = Get-AgentDefinitions
     $instructionDefinitions = Get-InstructionDefinitions
     $skillDefinitions = Get-SkillDefinitionsWithContent
     $context7ParityRequested = Test-Context7ParityRequested -AgentDefinitions $agentDefinitions
+    $githubParityRequested = Test-GitHubParityRequested -AgentDefinitions $agentDefinitions
 
     $managedContexts = Get-ManagedContexts -Roots $roots -AgentDefinitions $agentDefinitions -InstructionDefinitions $instructionDefinitions -SkillDefinitions $skillDefinitions
     foreach ($context in $managedContexts) {
@@ -742,10 +842,17 @@ function Invoke-PolicySync {
     $instructionPublishResult = Publish-Instructions -Roots $roots -Definitions $instructionDefinitions
     Publish-Skills -Roots $roots -Definitions $skillDefinitions
     Publish-ClaudeDocument -Roots $roots -InstructionPublishResult $instructionPublishResult -Definitions $instructionDefinitions
-    Write-SyncReport
+    try {
+        if ($context7ParityRequested) {
+            Invoke-Context7RemoteBootstrap
+        }
 
-    if ($context7ParityRequested) {
-        Invoke-Context7RemoteBootstrap
+        if ($githubParityRequested) {
+            Invoke-GitHubRemoteBootstrap
+        }
+    }
+    finally {
+        Write-SyncReport
     }
 }
 
@@ -1391,10 +1498,7 @@ function Test-LegacyManagedItem {
     }
 
     if ($Item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
-        $targetPath = Get-LinkTargetPath $Item
-        if ($targetPath -and $targetPath.StartsWith($RepositoryRoot, [StringComparison]::OrdinalIgnoreCase)) {
-            return $true
-        }
+        return $true
     }
 
     return $false
@@ -1695,74 +1799,6 @@ function New-DocumentContent {
     return ($document + '' + $Body) -join "`r`n"
 }
 
-function ConvertFrom-JsonWithComments {
-    param([string]$Content)
-
-    $builder = New-Object System.Text.StringBuilder
-    $inString = $false
-    $isEscaped = $false
-    $inLineComment = $false
-    $inBlockComment = $false
-
-    for ($index = 0; $index -lt $Content.Length; $index++) {
-        $character = $Content[$index]
-        $nextCharacter = if ($index + 1 -lt $Content.Length) { $Content[$index + 1] } else { [char]0 }
-
-        if ($inLineComment) {
-            if ($character -eq "`r" -or $character -eq "`n") {
-                $inLineComment = $false
-                [void]$builder.Append($character)
-            }
-            continue
-        }
-
-        if ($inBlockComment) {
-            if ($character -eq '*' -and $nextCharacter -eq '/') {
-                $inBlockComment = $false
-                $index++
-            }
-            continue
-        }
-
-        if ($inString) {
-            [void]$builder.Append($character)
-            if ($isEscaped) {
-                $isEscaped = $false
-                continue
-            }
-
-            if ($character -eq '\\') {
-                $isEscaped = $true
-                continue
-            }
-
-            if ($character -eq '"') {
-                $inString = $false
-            }
-            continue
-        }
-
-        if ($character -eq '/' -and $nextCharacter -eq '/') {
-            $inLineComment = $true
-            $index++
-            continue
-        }
-
-        if ($character -eq '/' -and $nextCharacter -eq '*') {
-            $inBlockComment = $true
-            $index++
-            continue
-        }
-
-        [void]$builder.Append($character)
-        if ($character -eq '"') {
-            $inString = $true
-        }
-    }
-
-    return ConvertFrom-Json $builder.ToString()
-}
-
 function Get-ConfiguredCanonicalTools {
     param([object]$Meta)
 
@@ -1935,10 +1971,10 @@ function Test-ClaudeContext7Configured {
     }
 
     try {
-        $config = ConvertFrom-Json (Get-Content -LiteralPath $claudeConfigPath -Raw)
-        $mcpServers = $config.PSObject.Properties['mcpServers']
-        if ($null -ne $mcpServers -and $null -ne $mcpServers.Value) {
-            $script:claudeContext7Configured = $null -ne $mcpServers.Value.PSObject.Properties['context7']
+        $config = Read-KatJsonDocument -Path $claudeConfigPath -DefaultFactory { [pscustomobject]@{} }
+        $mcpServers = Get-Prop $config 'mcpServers'
+        if ($null -ne $mcpServers) {
+            $script:claudeContext7Configured = $null -ne (Get-Prop $mcpServers 'context7')
         }
     }
     catch {
@@ -1958,7 +1994,7 @@ function Get-InstructionScope {
 function Read-CanonicalMeta {
     param([string]$Path)
 
-    return ConvertFrom-JsonWithComments (Get-Content -LiteralPath $Path -Raw)
+    return Read-KatJsonDocument -Path $Path -DefaultFactory { [pscustomobject]@{} }
 }
 
 function Resolve-ClientMarkdown {

@@ -15,13 +15,23 @@ Because these configuration files are either hard coded locations or only discov
 1. Run the following command in Terminal:
   `C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\update.ps1`
 
-If KAT Policies agent metadata requires Context7 MCP Server , `update.ps1` automatically runs `AI\skills\kat-policies\scripts\install-context7-remote.ps1`. The helper always requires `CONTEXT7_API_KEY` and fails fast when it is missing. Set `CONTEXT7_API_KEY` first:
+If KAT Policies agent metadata requires Context7 MCP Server, `update.ps1` automatically runs `AI\skills\kat-policies\scripts\install-context7-remote.ps1`. The helper always requires `CONTEXT7_API_KEY` and fails fast when it is missing. Set `CONTEXT7_API_KEY` first:
 
 `[Environment]::SetEnvironmentVariable("CONTEXT7_API_KEY", "<your-key>", "User")`
 
 Optional preview without file writes:
 
 `C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\install-context7-remote.ps1 -WhatIf`
+
+If KAT Policies agent metadata requires GitHub tools (`github/*`), `update.ps1` automatically runs `AI\skills\kat-policies\scripts\install-github-remote.ps1`. The helper enforces remote GitHub MCP where possible: VS Code is set to `https://api.githubcopilot.com/mcp/`, Copilot CLI is configured to a non-readonly remote override (`github-mcp-server`) with PAT auth when available or host OAuth best effort when PAT is missing, and Claude is configured remote-first while preserving an existing local fallback when PAT auth is unavailable.
+
+When GitHub PAT variables are missing, the helper prints PAT setup instructions, explicitly warns that auth is still required, and tells the user to set `GITHUB_TOKEN` in User scope.
+
+Copilot CLI and Claude artifacts are only created when those clients are detected as installed. If a client is absent, the helper reports `no-client` and skips that client's artifact creation.
+
+Optional preview without file writes:
+
+`C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\install-github-remote.ps1 -WhatIf`
 
 Once you've installed this once, the `kat-policies` skill will be available in your Copilot and Claude chats.  Simply ask to "update KAT policies" and the agent will pull the latest files and run the script automatically.
 
@@ -130,6 +140,7 @@ The renderer is trying to accomplish four things:
 1. Mark rendered files as read-only and stamp managed plain files with a `CreatedBy=KAT` alternate data stream when possible.
 1. Print a deployment matrix plus compatibility summary after each run.
 1. When Context7 is requested by canonical agent tool metadata, invoke the remote Context7 bootstrap helper to ensure VS Code, Copilot CLI, and Claude Context7 MCP entries are set to remote HTTP (converting existing local `stdio` entries where present).
+1. When GitHub tools are requested by canonical agent tool metadata, invoke the GitHub bootstrap helper to enforce remote GitHub MCP where possible (VS Code + Copilot CLI non-readonly override) and configure Claude remote-first with local Docker fallback when PAT-based remote auth is unavailable.
 
 ### Ownership And Cleanup Model
 

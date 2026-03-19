@@ -28,10 +28,17 @@ Stop processing if Developer Mode is not enabled.
 
 `update.ps1` automatically runs the remote-only Context7 bootstrap helper when canonical metadata requires Context7 parity. This bootstrap always requires `CONTEXT7_API_KEY` in environment scope (`Process`, `User`, or `Machine`) and fails fast when missing.
 
-Optional dry run preview for Context7 bootstrap only (no file writes):
+`update.ps1` also runs the GitHub MCP bootstrap helper when canonical metadata requires `github/*` tool parity. The helper enforces remote GitHub MCP where possible: VS Code is set to remote HTTP (`https://api.githubcopilot.com/mcp/`), Copilot CLI is configured to a non-readonly remote override (`github-mcp-server`) with PAT auth when available or host OAuth best effort when PAT is missing, and Claude is configured remote-first while preserving an existing local fallback when PAT auth is unavailable.
+
+When GitHub PAT variables are missing, the helper now prints explicit setup guidance, warns that auth is still required, and tells the user to set `GITHUB_TOKEN` in User scope.
+
+Copilot CLI and Claude artifacts are created only when those clients are detected as installed. If a client is absent, the helper reports status `no-client` and does not create that client's artifacts.
+
+Optional dry run preview for MCP bootstrap checks only (no file writes):
 
 ```powershell
 & "C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\install-context7-remote.ps1" -WhatIf
+& "C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\install-github-remote.ps1" -WhatIf
 ```
 
 4. Try to review the users VS Code User Settings.  VS Code's Copilot tries to read AI primitives in the 'Claude' and 'Copilot CLI' folders too, so the following settings should be applied to eliminate duplicates.
