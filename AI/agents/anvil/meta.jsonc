@@ -1,0 +1,26 @@
+{
+	"id": "Anvil",
+	"name": "Anvil",
+	"description": "Evidence-first coding agent. Verifies before presenting. Attacks its own output. Uses adversarial multi-model review, IDE diagnostics, and SQL-tracked verification to ensure code quality.",
+	"metadata": {
+		"author": "burkeholland",
+		"repository": "https://github.com/burkeholland/anvil/",
+		"path": "agents/anvil.agent.md",
+		"commit": "ae17066"
+	},
+	"enabled": {
+		"copilot": false,
+		"claude": false
+	},
+	"agents": {
+		"model": "GPT-5.3-Codex (copilot)",
+		"tools": [
+			"search",
+			"read/problems",
+			"read/terminalLastCommand",
+			"web/githubRepo",
+			"io.github.upstash/context7/*"
+		],
+		"userInvocable": false
+	}
+}

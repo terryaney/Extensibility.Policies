@@ -1,12 +1,8 @@
 
-# Context
-- .NET Core development with focus on web APIs, sites, libraries, and services.
-- Developer is experienced with C# but new to AI/agent workflows.
-
-## Tech Stack
-- Backend: ASP.NET Core, Entity Framework Core
-- Frontend: TypeScript/JavaScript, Vue (Petite Vue)
-- Testing: xUnit
+# Tech Stack
+- Backend: ASP.NET Core, Entity Framework Core, FastEndpoints
+- Frontend: HTML, Bootstrap CSS, TypeScript/JavaScript, Vue (Petite Vue)
+- Testing: xUnit, FastEndpoints.Testing
 - Architecture: Vertical slice architecture (preferred), with selective clean architecture principles
 
 ALWAYS use #context7 MCP Server to read relevant documentation for external libraries. Do this every time you are working with a language, framework, library etc. Never assume that you know the answer as these things change frequently. Your training date is in the past so your knowledge is likely out of date, even if it is a technology you are familiar with.
@@ -26,29 +22,42 @@ ALWAYS use #context7 MCP Server to read relevant documentation for external libr
   - Never apologize or make conciliatory statements.
 - Don't reflexively agree when I question or correct something - evaluate it honestly
   - Explain your reasoning when making suggestions or changes
-- After generating your answer:
-  - Check if it addresses all points
-  - Verify no contradictions exist
-  - Confirm format matches requirements
-  - If any check fails, revise and recheck
-- DO explain AI/agent/LLM concepts and patterns since I'm new to this space
+- Don't explain basic C# concepts unless specifically asked
 
 # Code Approach
 - **Default: Do exactly what I ask.** Don't go beyond the request unless there's something glaring
+- Don't over-engineer solutions, but follow current coding standards (i.e. concrete vs interface DI, minimal apis vs controllers, etc.)
+- Look for opportunities to reuse existing code/helpers instead of writing new (possibly duplicate) code - ask if you're not sure if something exists already
 - Always ask for clarification when requirements are ambiguous rather than guessing
-- When implementing features, lean towards vertical slice organization unless I specify otherwise
+- When implementing features, lean towards vertical slice organization unless specified otherwise
 - If you spot a significant issue (bugs, security problems, major performance issues), proactively flag it and ask if I want to address it now or later.
 - Minor improvements or optimizations: mention them but don't implement unless asked
 
 # Code Standards
 - Follow standard C# naming conventions
 - Prefer explicit over implicit when clarity matters
-- Keep controllers thin - business logic belongs in handlers/services
-- Write tests for business logic, not infrastructure plumbing
+- Write/suggest tests for business logic, not infrastructure plumbing
 
-# What NOT to Do
-- It is not necessary to agree with me statements such as "You're right" or "Yes".
-- Don't say "you're exactly right" or similar phrases when I challenge something
-- Don't add extra features or "enhancements" I didn't ask for
-- Don't over-engineer solutions
-- Don't explain basic C# concepts unless I specifically ask
+# Code Review
+Whenever doing a code review (either on your own or explicitly requested), and a specific 'code review' agent/, command/skill is not being used:
+
+1. Invoke three parallel subagents using Opus, Gemini, and Codex.
+2. Cross-grade: have each reviewer evaluate the other two reviews for false positives and missed issues
+3. Synthesize a deduplicated list of findings ordered by severity (Critical > Major > Minor > Nit)
+4. Output one final fix list with file, line, and suggested change for each item
+
+## Output Format
+
+```markdown
+## Summary
+One-sentence summary of the overall change quality.
+
+## Findings
+### [Severity] Title
+**File:** `path/to/file.ts:L42`
+**Issue:** Description of the problem and why it matters.
+**Suggestion:** Concrete fix or approach.
+
+## Verdict
+APPROVE | REQUEST_CHANGES | NEEDS_DISCUSSION
+```

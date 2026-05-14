@@ -1425,6 +1425,8 @@ function Write-DeploymentMatrix {
         }
 
         $rows = foreach ($group in $groups) {
+            if (-not @($group.Group | Where-Object { $_.Status -ne 'disabled' }).Count) { continue }
+
             $cells = @($group.Name)
             foreach ($displayTarget in $displayTargets) {
                 if ($category -eq 'instruction') {
