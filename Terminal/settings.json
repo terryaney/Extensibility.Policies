@@ -131,7 +131,6 @@
                 "startingDirectory": "C:\\Windows\\System32\\drivers\\etc"
             },
             {
-				"background": "#FAF6EF",
                 "backgroundImage": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\claude-background.png",
 				"backgroundImageAlignment": "bottomRight",
 				"backgroundImageOpacity": 0.1,

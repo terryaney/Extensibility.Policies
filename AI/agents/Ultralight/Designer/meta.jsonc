@@ -3,8 +3,8 @@
 	"name": "Ultralight (Designer)",
 	"description": "Handles all UI/UX design tasks.",
 	"enabled": {
-		"copilot": true,
-		"claude": true
+		"copilot": false,
+		"claude": false
 	},
 	"agents": {
 		"model": "Gemini 3 Pro (Preview) (copilot)",

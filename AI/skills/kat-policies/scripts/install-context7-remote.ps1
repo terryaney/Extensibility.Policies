@@ -30,10 +30,6 @@ function Add-Result {
     Add-KatResult -Results $script:results -Client $Client -Status $Status -Method $Method -Path $Path -Detail $Detail
 }
 
-function Test-IsInteractiveHost {
-    return [Environment]::UserInteractive -and $Host.Name -ne 'ServerRemoteHost'
-}
-
 function Test-Context7ApiKeyEnvAvailable {
     $scopes = @('Process', 'User', 'Machine')
     foreach ($scope in $scopes) {
@@ -74,7 +70,7 @@ function Confirm-Context7ApiKeyAvailable {
     while (-not (Test-Context7ApiKeyEnvAvailable)) {
         Show-MissingApiKeyInstructions
 
-        if (-not (Test-IsInteractiveHost)) {
+        if (-not (Test-KatInteractiveHost)) {
             throw 'CONTEXT7_API_KEY is not set in Process, User, or Machine scope. Set it first.'
         }
 
@@ -230,8 +226,7 @@ function Set-ClaudeContext7 {
     }
 
     $claudeConfigPath = Join-Path $env:USERPROFILE '.claude.json'
-    $claudeInstalled = (Test-KatCommandAvailable -Name 'claude') -or (Test-Path -LiteralPath $claudeConfigPath) -or (Test-Path -LiteralPath (Join-Path $env:USERPROFILE '.claude')) -or (Test-KatClaudeVsCodeExtensionInstalled)
-    if (-not $claudeInstalled) {
+    if (-not (Test-KatClaudeInstalled)) {
         Add-Result -Client 'claude' -Status 'no-client' -Method 'none' -Path '-' -Detail 'Claude CLI/extension not detected.'
         return
     }
@@ -273,16 +268,12 @@ function Set-ClaudeContext7 {
     }
 }
 
-function Write-ResultSummary {
-    Write-KatResultSummary -Title 'Context7 Remote Setup Summary' -Results @($script:results.ToArray())
-}
-
 $apiKeyReady = Confirm-Context7ApiKeyAvailable
 
 Set-VsCodeContext7
 Set-CopilotCliContext7
 Set-ClaudeContext7
-Write-ResultSummary
+Write-KatResultSummary -Title 'Context7 Remote Setup Summary' -Results @($script:results.ToArray())
 
 if ($PassThru) {
     return (New-KatBootstrapPassThru -Results @($script:results.ToArray()) -CredentialAvailable $apiKeyReady)

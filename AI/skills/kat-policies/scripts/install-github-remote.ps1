@@ -412,14 +412,10 @@ function Set-ClaudeGitHub {
     }
 }
 
-function Write-ResultSummary {
-    Write-KatResultSummary -Title 'GitHub Remote Setup Summary' -Results @($script:results.ToArray())
-}
-
 Set-VsCodeGitHubRemote
 Set-CopilotCliGitHubRemote
 Set-ClaudeGitHub
-Write-ResultSummary
+Write-KatResultSummary -Title 'GitHub Remote Setup Summary' -Results @($script:results.ToArray())
 
 if ($PassThru) {
     return (New-KatBootstrapPassThru -Results @($script:results.ToArray()) -CredentialAvailable (Test-GitHubPatEnvAvailable) -GuidanceShown $script:githubPatGuidanceShown)

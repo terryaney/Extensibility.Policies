@@ -177,6 +177,10 @@ function Test-KatTruthySettingValue {
 	}
 }
 
+function Test-KatInteractiveHost {
+	return [Environment]::UserInteractive -and $Host.Name -ne 'ServerRemoteHost'
+}
+
 function Test-KatClaudeVsCodeExtensionInstalled {
 	if (-not (Test-KatCommandAvailable -Name 'code')) {
 		return $false
@@ -280,7 +284,8 @@ function Write-KatResultSummary {
 		[object[]]$Results
 	)
 
-	Write-Host ("--- {0} ---" -f $Title) -ForegroundColor Cyan
+	Write-Host '' # Blank line for spacing
+	# Write-Host ("--- {0} ---" -f $Title) -ForegroundColor Cyan
 
 	foreach ($result in @($Results)) {
 		$statusColor = switch ($result.Status) {
@@ -298,6 +303,8 @@ function Write-KatResultSummary {
 		Write-Host ("  path: {0}" -f $pathText)
 		Write-Host ("  detail: {0}" -f $result.Detail)
 	}
+
+	Write-Host '' # Blank line for spacing
 }
 
 function New-KatBootstrapPassThru {
@@ -335,6 +342,7 @@ Export-ModuleMember -Function @(
 	'Test-KatClaudeVsCodeExtensionInstalled',
 	'Test-KatCommandAvailable',
 	'Test-KatDryRun',
+	'Test-KatInteractiveHost',
 	'Test-KatTruthySettingValue',
 	'Write-KatJsonDocument',
 	'Write-KatResultSummary'

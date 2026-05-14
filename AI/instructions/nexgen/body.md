@@ -14,4 +14,4 @@ When suggestion HTML code that uses javscript, please use the following guidelin
 
 1. Always prefer petite-vue directives and features for DOM manipulation and event handling when working within `.kaml` files. For example, use `@click` for click events vs `addEventListener` in vanilla JavaScript.
 2. Never suggest using jQuery. Instead, use Camelot's built-in `camelot.html` utilities for DOM manipulation and event handling (refer to `camelot.d.ts` for available methods and types) then fall back to vanilla javascript.
-3. If you did not find a suitable helper in `camelot.html`, suggest a fix via vanilla JavaScript and suggest adding feature to `camelot.html` object (updating both the `.js` and `.d.ts` files) to support the use case in the future.
+3. If you did not find a suitable helper in `camelot.html`, suggest a fix via vanilla JavaScript and suggest adding feature to `camelot.html` object (updating both the `.js` and `.d.ts` files) to support the use case in the future.  [You might not need jQuery](https://youmightnotneedjquery.com/) is a nice reference for common DOM manipulation and event handling patterns that can be implemented with vanilla JavaScript.

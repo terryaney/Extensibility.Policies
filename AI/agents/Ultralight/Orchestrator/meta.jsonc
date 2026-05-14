@@ -3,8 +3,8 @@
 	"name": "Ultralight Orchestrator",
 	"description": "Delegate prompts via GPT-5.4 to Planner (GPT-5.4), Coder (GPT-5.3-Codex), and Designer (Gemini 3 Pro (Preview))",
 	"enabled": {
-		"copilot": true,
-		"claude": true
+		"copilot": false,
+		"claude": false
 	},
 	"agents": {
 		"model": "GPT-5.4 (copilot)",

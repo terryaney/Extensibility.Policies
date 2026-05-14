@@ -3,8 +3,8 @@
 	"name": "Ultralight (Coder)",
 	"description": "Writes code following mandatory coding principles.",
 	"enabled": {
-		"copilot": true,
-		"claude": true
+		"copilot": false,
+		"claude": false
 	},
 	"agents": {
 		"model": "GPT-5.3-Codex (copilot)",
