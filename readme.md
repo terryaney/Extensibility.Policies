@@ -166,7 +166,9 @@ The target schema also includes a shared mappings file at `AI/skills/kat-policie
 | `id` | string | agents, instructions, skills | Canonical id and base filename or folder name. |
 | `name` | string | agents, instructions, skills | Rendered display name. |
 | `description` | string | agents, instructions, skills | Rendered summary or description. |
-| `enabled.copilot` | bool | agents, instructions, skills | Publishes Copilot outputs for that artifact. For agents and instructions this covers both VS Code and Copilot CLI renderers where applicable. Defaults to `true`. |
+| `enabled.copilot` | bool | agents, instructions, skills | Publishes all Copilot outputs (both VS Code and Copilot CLI) for that artifact. If `true`, overrides any sub-client properties. Defaults to `true`. |
+| `enabled.copilot.vscode` | bool | agents, instructions, skills | Optional. Publishes only the VS Code output when `enabled.copilot` is `false` or absent. Ignored when `enabled.copilot` is `true`. Defaults to `false` when `enabled.copilot` is explicitly `false`; otherwise inherits the `enabled.copilot` default. |
+| `enabled.copilot.cli` | bool | agents, instructions, skills | Optional. Publishes only the Copilot CLI output when `enabled.copilot` is `false` or absent. Ignored when `enabled.copilot` is `true`. Defaults to `false` when `enabled.copilot` is explicitly `false`; otherwise inherits the `enabled.copilot` default. |
 | `enabled.claude` | bool | agents, instructions, skills | Publishes Claude outputs for that artifact. Defaults to `true`. |
 | `enabled.repositories` | string[] | agents, instructions, skills | Optional repo-local publish roots. When omitted, publishing is user-level only. |
 | `agents.model` | string | agents | Canonical VS Code Copilot model display name. Copilot CLI and Claude output map from this value through `AI\skills\kat-policies\scripts\meta.mappings.jsonc`. |
@@ -179,6 +181,7 @@ The target schema also includes a shared mappings file at `AI/skills/kat-policie
 | `compatibility` | string | skills | Optional compatibility note rendered with the skill. |
 | `metadata` | object | skills | Optional nested metadata. Preserve it when present. |
 | `skills.excludeCommands.copilot` | string[] | skills | Optional list of canonical command basenames to skip when generating Copilot child skills. |
+| `bodyReplacements` | object | agents, instructions, skills | Optional per-client string substitutions applied after client markers are resolved. Keys are `copilot.vscode`, `copilot.cli`, `copilot` (shared skills), or `claude`. Each value is a flat object of old → new string pairs applied top-to-bottom. |
 
 `agents.handoffs[]` supports these nested fields:
 
@@ -187,11 +190,13 @@ The target schema also includes a shared mappings file at `AI/skills/kat-policie
 - `prompt`: prompt text sent to the target.
 - `send`: optional bool, defaults to `false`.
 
-Canonical skill markdown supports optional client markers for small wording differences inside shared content:
+Canonical artifact body content supports optional client markers for small wording differences inside shared content. Markers are stripped during publishing so each client receives only its relevant block.
+
+**Top-level client markers** — apply across the entire Copilot family or Claude:
 
 ```md
 <!-- copilot:start -->
-Copilot-only text.
+Copilot-only text (VS Code and CLI).
 <!-- copilot:end -->
 
 <!-- claude:start -->
@@ -199,7 +204,51 @@ Claude-only text.
 <!-- claude:end -->
 ```
 
-The renderer strips these markers during publishing so each client receives only its relevant block.
+**Sub-client markers** — narrow content to a specific Copilot target:
+
+```md
+<!-- copilot-vscode:start -->
+VS Code Copilot-only text.
+<!-- copilot-vscode:end -->
+
+<!-- copilot-cli:start -->
+Copilot CLI-only text.
+<!-- copilot-cli:end -->
+```
+
+The renderer applies the following matrix when resolving markers for each publish target:
+
+| Marker tag | VS Code | Copilot CLI | Claude |
+|---|---|---|---|
+| `copilot` | kept | kept | removed |
+| `copilot-vscode` | kept | removed | removed |
+| `copilot-cli` | removed | kept | removed |
+| `claude` | removed | removed | kept |
+
+`copilot` and `copilot-vscode`/`copilot-cli` may coexist freely. Content inside a plain `<!-- copilot:start -->` block appears in both VS Code and CLI output, while sub-client blocks let you vary the wording further within the same file.
+
+Skills deploy a single shared file read by both VS Code and Copilot CLI. Sub-client markers in skill bodies are still resolved, but since both clients read the same file, only plain `<!-- copilot:start -->` markers are meaningful in practice for skills.
+
+### Body Replacements
+
+`meta.jsonc` supports an optional `bodyReplacements` object for client-specific string substitutions. After client markers are resolved, the renderer applies all replacements for the matching client key top-to-bottom.
+
+```jsonc
+"bodyReplacements": {
+    "copilot.vscode": {
+        "`ask_user`": "`vscode/askQuestions`",
+        "`session_store`": "`session_store_sql`"
+    },
+    "copilot.cli": {
+        "`ask_user`": "`some_cli_tool`"
+    },
+    "claude": {
+        "`ask_user`": "`AskUserQuestion`"
+    }
+}
+```
+
+Valid client keys are `copilot.vscode`, `copilot.cli`, `copilot` (shared skills), and `claude`. Each key's value is a flat object mapping old strings to new strings. Replacements are applied as plain string substitutions in the order they appear.
 
 If a canonical skill has a `commands/*.md` folder, Copilot publishing also generates standalone child skill folders named `<parent>.<command>`. The folder name matches the published skill name, so a command can be invoked as `/visual-explainer.diff-review`. Copilot skill installs do not include a `commands` folder.
 

@@ -35,6 +35,9 @@
 		"read/*": {
 			"claude": "Read"
 		},
+		"read/problems": {
+			"copilotCli": "ide-get_diagnostics"
+		},
 		"search": {
 			"claude": [ "Grep", "Glob" ]
 		},
@@ -42,13 +45,16 @@
 			"claude": "TodoWrite"
 		},
 		"vscode": {
-			"claude": [ "AskUserQuestion", "persistent:user" ]
+			"claude": [ "AskUserQuestion", "persistent:user", "ToolSearch" ],
+			"copilotCli": [ "ask_user", "memory" ]
 		},
 		"vscode/askQuestions": {
-			"claude": "AskUserQuestion"
+			"claude": "AskUserQuestion",
+			"copilotCli": "ask_user"
 		},
 		"vscode/memory": {
-			"claude": "persistent:user"
+			"claude": "persistent:user",
+			"copilotCli": "memory"
 		},
 		"web": {
 			"claude": "WebFetch"

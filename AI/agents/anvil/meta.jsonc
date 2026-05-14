@@ -9,18 +9,25 @@
 		"commit": "ae17066"
 	},
 	"enabled": {
-		"copilot": false,
+		"copilot.cli": true,
+		"copilot.vscode": true,
 		"claude": false
+	},
+	"bodyReplacements": {
+		"copilot.vscode": {
+			"`ask_user`": "`vscode/askQuestions`",
+			"`session_store`": "`session_store_sql`",
+			"`ide-get_diagnostics`": "`read/problems`"
+		}
 	},
 	"agents": {
 		"model": "GPT-5.3-Codex (copilot)",
 		"tools": [
-			"search",
-			"read/problems",
-			"read/terminalLastCommand",
-			"web/githubRepo",
+			"vscode/askQuestions",
+			"agent",
+			"vscode/memory",
 			"io.github.upstash/context7/*"
 		],
-		"userInvocable": false
+		"userInvocable": true
 	}
 }
