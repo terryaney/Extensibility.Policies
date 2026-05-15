@@ -42,11 +42,12 @@ If unsure, treat as Medium.
 
 ## Verification Ledger
 
-All verification is recorded in SQL. This prevents hallucinated verification.
 <!-- copilot-vscode:start -->
-Use `session_store_sql` for all SQL in this file. Never create or use project-local DB files (e.g., `anvil_checks.db`).
+All verification is recorded in a global DuckDB database at `%USERPROFILE%\AppData\Roaming\Code\User\prompts\anvil.duckdb`. This prevents hallucinated verification and enables cross-workspace evidence tracking.
+**Always use this DuckDB file for all ledger operations. Create the file and table if not present.**
 <!-- copilot-vscode:end -->
 <!-- copilot-cli:start -->
+All verification is recorded in SQL. This prevents hallucinated verification.
 Use the internally managed database `session_store` for all SQL in this file. Never create or use project-local DB files (e.g., `anvil_checks.db`).
 <!-- copilot-cli:end -->
 
@@ -54,9 +55,16 @@ At the start of every Medium or Large task, generate a `task_id` slug from the t
 
 Create the ledger:
 
+<!-- copilot-vscode:start -->
+**Include a `workspace` field in every row, set to the current workspace's absolute path or a unique identifier.**
+
+<!-- copilot-vscode:end -->
 ```sql
 CREATE TABLE IF NOT EXISTS anvil_checks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+<!-- copilot-vscode:start -->
+    workspace TEXT NOT NULL,
+<!-- copilot-vscode:end -->
     task_id TEXT NOT NULL,
     phase TEXT NOT NULL CHECK(phase IN ('baseline', 'after', 'review')),
     check_name TEXT NOT NULL,
@@ -69,8 +77,21 @@ CREATE TABLE IF NOT EXISTS anvil_checks (
 );
 ```
 
+<!-- copilot-vscode:start -->
+**Rule: Every verification step must be an INSERT into the DuckDB ledger. The Evidence Bundle is a SELECT, not prose. If the INSERT didn't happen, the verification didn't happen.**
+**Rule: All ledger SQL runs against `%USERPROFILE%\AppData\Roaming\Code\User\prompts\anvil.duckdb` only. Never create project-local DB files.**
+**Workspace identifier:** Use the absolute path of the current VS Code workspace folder (from `vscode.workspace.workspaceFolders[0].uri.fsPath` or equivalent). Store it as `{workspace}` and include it in every INSERT and SELECT.
+
+**Sample INSERT:**
+```sql
+INSERT INTO anvil_checks (workspace, task_id, phase, check_name, tool, command, exit_code, passed, output_snippet)
+VALUES ('{workspace}', '{task_id}', 'baseline', 'build', 'dotnet', 'dotnet build', 0, 1, 'Build succeeded');
+```
+<!-- copilot-vscode:end -->
+<!-- copilot-cli:start -->
 **Rule: Every verification step must be an INSERT. The Evidence Bundle is a SELECT, not prose. If the INSERT didn't happen, the verification didn't happen.**
 **Rule: All ledger SQL runs against `session_store` only. Do not create database files in the repo.**
+<!-- copilot-cli:end -->
 
 ## The Anvil Loop
 
@@ -156,7 +177,13 @@ Internally plan which files change, risk levels (🟢/🟡/🔴). For Large task
 ### 3b. Baseline Capture (silent - Medium and Large only)
 
 **🚫 GATE: Do NOT proceed to Step 4 until baseline INSERTs are complete.**
+<!-- copilot-vscode:start -->
+**Capture the workspace path first: `{workspace}` = absolute path of the current workspace.**
+**If you have zero rows in anvil_checks with workspace = '{workspace}' AND phase='baseline', you skipped this step. Go back.**
+<!-- copilot-vscode:end -->
+<!-- copilot-cli:start -->
 **If you have zero rows in anvil_checks with phase='baseline', you skipped this step. Go back.**
+<!-- copilot-cli:end -->
 
 Before changing any code, capture current system state. Run applicable checks from the Verification Cascade (5b) and INSERT with `phase = 'baseline'`.
 
@@ -177,7 +204,12 @@ Execute all applicable steps. For Medium and Large tasks, INSERT every result in
 
 #### 5a. IDE Diagnostics (always required)
 
+<!-- copilot-vscode:start -->
+Call `read/problems` for every file you changed AND files that import your changed files. If there are errors, fix immediately. INSERT result (Medium and Large only) with `workspace = '{workspace}'`.
+<!-- copilot-vscode:end -->
+<!-- copilot-cli:start -->
 Call `ide-get_diagnostics` for every file you changed AND files that import your changed files. If there are errors, fix immediately. INSERT result (Medium and Large only).
+<!-- copilot-cli:end -->
 
 #### 5b. Verification Cascade
 
@@ -211,7 +243,12 @@ If Tier 3 is infeasible in the current environment (e.g., iOS library with no si
 #### 5c. Adversarial Review
 
 **🚫 GATE: Do NOT proceed to 5d until all reviewer verdicts are INSERTed.**
+<!-- copilot-vscode:start -->
+**Verify: `SELECT COUNT(*) FROM anvil_checks WHERE workspace = '{workspace}' AND task_id = '{task_id}' AND phase = 'review';`**
+<!-- copilot-vscode:end -->
+<!-- copilot-cli:start -->
 **Verify: `SELECT COUNT(*) FROM anvil_checks WHERE task_id = '{task_id}' AND phase = 'review';`**
+<!-- copilot-cli:end -->
 **If 0 for Medium or < 3 for Large, go back.**
 
 Before launching reviewers, stage your changes: `git add -A` so reviewers see them via `git diff --staged`.
@@ -261,7 +298,12 @@ agent_type: "code-review", model: "claude-opus-4.6"
 ```
 <!-- copilot-cli:end -->
 
+<!-- copilot-vscode:start -->
+INSERT each verdict with `phase = 'review'`, `workspace = '{workspace}'`, and `check_name = 'review-{model_name}'` (e.g., `review-gpt-5.3-codex`).
+<!-- copilot-vscode:end -->
+<!-- copilot-cli:start -->
 INSERT each verdict with `phase = 'review'` and `check_name = 'review-{model_name}'` (e.g., `review-gpt-5.3-codex`).
+<!-- copilot-cli:end -->
 
 If real issues found, fix, re-run 5b AND 5c. **Max 2 adversarial rounds.** After the second round, INSERT remaining findings as known issues and present with Confidence: Low.
 
@@ -272,21 +314,41 @@ Before presenting, check:
 - **Degradation**: If an external dependency fails, does the app crash or handle it?
 - **Secrets**: Are any values hardcoded that should be env vars or config?
 
+<!-- copilot-vscode:start -->
+INSERT each check into `anvil_checks` with `workspace = '{workspace}'`, `phase = 'after'`, `check_name = 'readiness-{type}'` (e.g., `readiness-secrets`), and `passed = 0/1`.
+<!-- copilot-vscode:end -->
+<!-- copilot-cli:start -->
 INSERT each check into `anvil_checks` with `phase = 'after'`, `check_name = 'readiness-{type}'` (e.g., `readiness-secrets`), and `passed = 0/1`.
+<!-- copilot-cli:end -->
 
 #### 5e. Evidence Bundle (Medium and Large only)
 
 **🚫 GATE: Do NOT present the Evidence Bundle until:**
+<!-- copilot-vscode:start -->
+```sql
+SELECT COUNT(*) FROM anvil_checks WHERE workspace = '{workspace}' AND task_id = '{task_id}' AND phase = 'after';
+```
+<!-- copilot-vscode:end -->
+<!-- copilot-cli:start -->
 ```sql
 SELECT COUNT(*) FROM anvil_checks WHERE task_id = '{task_id}' AND phase = 'after';
 ```
+<!-- copilot-cli:end -->
 **Returns ≥ 2 (Medium) or ≥ 3 (Large). Review-phase rows don't count - this gate requires real verification signals. If insufficient, return to 5b.**
 
 Generate from SQL:
+<!-- copilot-vscode:start -->
+```sql
+SELECT phase, check_name, tool, command, exit_code, passed, output_snippet
+FROM anvil_checks WHERE workspace = '{workspace}' AND task_id = '{task_id}' ORDER BY phase DESC, id;
+```
+<!-- copilot-vscode:end -->
+<!-- copilot-cli:start -->
 ```sql
 SELECT phase, check_name, tool, command, exit_code, passed, output_snippet
 FROM anvil_checks WHERE task_id = '{task_id}' ORDER BY phase DESC, id;
 ```
+<!-- copilot-cli:end -->
 
 Present:
 

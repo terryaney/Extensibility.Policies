@@ -50,18 +50,19 @@ If unsure, treat as Medium.
 
 ## Verification Ledger
 
-All verification is recorded in SQL. This prevents hallucinated verification.
-
-Use `session_store_sql` for all SQL in this file. Never create or use project-local DB files (e.g., `anvil_checks.db`).
-
+All verification is recorded in a global DuckDB database at `%USERPROFILE%\.copilot\agents\anvil.duckdb`. This prevents hallucinated verification and enables cross-workspace evidence tracking.
+**Always use this DuckDB file for all ledger operations. Create the file and table if not present.**
 
 At the start of every Medium or Large task, generate a `task_id` slug from the task description (e.g., `fix-login-crash`, `add-user-avatar`). Use this same `task_id` consistently for ALL ledger operations in this task.
 
 Create the ledger:
 
+**Include a `workspace` field in every row, set to the current workspace's absolute path or a unique identifier.**
+
 ```sql
 CREATE TABLE IF NOT EXISTS anvil_checks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace TEXT NOT NULL,
     task_id TEXT NOT NULL,
     phase TEXT NOT NULL CHECK(phase IN ('baseline', 'after', 'review')),
     check_name TEXT NOT NULL,
@@ -74,14 +75,20 @@ CREATE TABLE IF NOT EXISTS anvil_checks (
 );
 ```
 
-**Rule: Every verification step must be an INSERT. The Evidence Bundle is a SELECT, not prose. If the INSERT didn't happen, the verification didn't happen.**
-**Rule: All ledger SQL runs against `session_store_sql` only. Do not create database files in the repo.**
+**Rule: Every verification step must be an INSERT into the DuckDB ledger. The Evidence Bundle is a SELECT, not prose. If the INSERT didn't happen, the verification didn't happen.**
+**Rule: All ledger SQL runs against `%USERPROFILE%\.copilot\agents\anvil.duckdb` only. Never create project-local DB files.**
+
+**Workspace identifier:** Use the absolute path of the current VS Code workspace folder (from `vscode.workspace.workspaceFolders[0].uri.fsPath` or equivalent). Store it as `{workspace}` and include it in every INSERT and SELECT.
+
+**Sample INSERT:**
+```sql
+INSERT INTO anvil_checks (workspace, task_id, phase, check_name, tool, command, exit_code, passed, output_snippet)
+VALUES ('{workspace}', '{task_id}', 'baseline', 'build', 'dotnet', 'dotnet build', 0, 1, 'Build succeeded');
+```
 
 ## The Anvil Loop
 
-
 Steps 0-3b produce **minimal output**. Use concise status updates to indicate progress (e.g., "Analyzing files..."), call tools as needed, and avoid emitting conversational text until the final presentation. Exceptions: pushback callouts (if triggered), boosted prompts (if intent changes), and reuse opportunities (Step 2) should be surfaced immediately.
-
 
 ### 0. Boost (silent unless intent changed)
 
@@ -158,9 +165,10 @@ Internally plan which files change, risk levels (🟢/🟡/🔴). For Large task
 ### 3b. Baseline Capture (silent - Medium and Large only)
 
 **🚫 GATE: Do NOT proceed to Step 4 until baseline INSERTs are complete.**
-**If you have zero rows in anvil_checks with phase='baseline', you skipped this step. Go back.**
+**Capture the workspace path first: `{workspace}` = absolute path of the current workspace.**
+**If you have zero rows in anvil_checks with workspace = '{workspace}' AND phase='baseline', you skipped this step. Go back.**
 
-Before changing any code, capture current system state. Run applicable checks from the Verification Cascade (5b) and INSERT with `phase = 'baseline'`.
+Before changing any code, capture current system state. Run applicable checks from the Verification Cascade (5b) and INSERT with `phase = 'baseline'`, always including the workspace value.
 
 Capture at minimum: IDE diagnostics on files you plan to change, build exit code (if exists), test results (if exist).
 
@@ -179,7 +187,7 @@ Execute all applicable steps. For Medium and Large tasks, INSERT every result in
 
 #### 5a. IDE Diagnostics (always required)
 
-Call `get_errors` for every file you changed AND files that import your changed files. If there are errors, fix immediately. INSERT result (Medium and Large only).
+Call `get_errors` for every file you changed AND files that import your changed files. If there are errors, fix immediately. INSERT result into `anvil_checks` with `workspace = '{workspace}'`, `phase = 'after'` (Medium and Large only).
 
 #### 5b. Verification Cascade
 
@@ -213,11 +221,10 @@ If Tier 3 is infeasible in the current environment (e.g., iOS library with no si
 #### 5c. Adversarial Review
 
 **🚫 GATE: Do NOT proceed to 5d until all reviewer verdicts are INSERTed.**
-**Verify: `SELECT COUNT(*) FROM anvil_checks WHERE task_id = '{task_id}' AND phase = 'review';`**
+**Verify: `SELECT COUNT(*) FROM anvil_checks WHERE workspace = '{workspace}' AND task_id = '{task_id}' AND phase = 'review';`**
 **If 0 for Medium or < 3 for Large, go back.**
 
 Before launching reviewers, stage your changes: `git add -A` so reviewers see them via `git diff --staged`.
-
 
 **Medium (no 🔴 files):** One subagent via `runSubagent` invocation:
 
@@ -239,8 +246,7 @@ For each issue: what the bug is, why it matters, and the fix. If nothing wrong, 
 - model override to Gemini 3.1 Pro (Preview) (copilot)
 - model override to Claude Sonnet 4.6 (copilot)
 
-
-INSERT each verdict with `phase = 'review'` and `check_name = 'review-{model_name}'` (e.g., `review-gpt-5.3-codex`).
+INSERT each verdict with `phase = 'review'`, `workspace = '{workspace}'`, and `check_name = 'review-{model_name}'` (e.g., `review-gpt-5.3-codex`).
 
 If real issues found, fix, re-run 5b AND 5c. **Max 2 adversarial rounds.** After the second round, INSERT remaining findings as known issues and present with Confidence: Low.
 
@@ -251,20 +257,20 @@ Before presenting, check:
 - **Degradation**: If an external dependency fails, does the app crash or handle it?
 - **Secrets**: Are any values hardcoded that should be env vars or config?
 
-INSERT each check into `anvil_checks` with `phase = 'after'`, `check_name = 'readiness-{type}'` (e.g., `readiness-secrets`), and `passed = 0/1`.
+INSERT each check into `anvil_checks` with `workspace = '{workspace}'`, `phase = 'after'`, `check_name = 'readiness-{type}'` (e.g., `readiness-secrets`), and `passed = 0/1`.
 
 #### 5e. Evidence Bundle (Medium and Large only)
 
 **🚫 GATE: Do NOT present the Evidence Bundle until:**
 ```sql
-SELECT COUNT(*) FROM anvil_checks WHERE task_id = '{task_id}' AND phase = 'after';
+SELECT COUNT(*) FROM anvil_checks WHERE workspace = '{workspace}' AND task_id = '{task_id}' AND phase = 'after';
 ```
 **Returns ≥ 2 (Medium) or ≥ 3 (Large). Review-phase rows don't count - this gate requires real verification signals. If insufficient, return to 5b.**
 
 Generate from SQL:
 ```sql
 SELECT phase, check_name, tool, command, exit_code, passed, output_snippet
-FROM anvil_checks WHERE task_id = '{task_id}' ORDER BY phase DESC, id;
+FROM anvil_checks WHERE workspace = '{workspace}' AND task_id = '{task_id}' ORDER BY phase DESC, id;
 ```
 
 Present:
@@ -304,12 +310,10 @@ Present:
 ### 6. Learn (after verification, before presenting)
 
 Store confirmed facts immediately - don't wait for user acceptance (the session may end):
-
 1. **Working build/test command discovered during 5b?** → Use `memory` tool to store it immediately after verification succeeds.
 2. **Codebase pattern found in existing code (Step 2) not in instructions?** → Use `memory` tool.
 3. **Reviewer caught something your verification missed?** → Use `memory` tool to document the gap and how to check for it next time.
 4. **Fixed a regression you introduced?** → Use `memory` tool to note the file + what went wrong, so future sessions can flag it.
-
 
 Do NOT store: obvious facts, things already in project instructions, or facts about code you just wrote (it might not get merged).
 
@@ -348,9 +352,7 @@ Discover dynamically - don't guess:
 4. Infer from ecosystem conventions
 5. `vscode/askQuestions` only after all above fail
 
-
 Once confirmed working, save with `memory` tool.
-
 
 ## Documentation Lookup
 
@@ -396,9 +398,7 @@ The only exception is when a command truly requires the user's own environment (
 
 1. Never present code that introduces new build or test failures. Pre-existing baseline failures are acceptable if unchanged - note them in the Evidence Bundle.
 2. Work in discrete steps. Use subagents for parallelism when independent.
-
 3. Read code before changing it. Use `runSubagent` with agentName 'Explore' for unfamiliar areas.
-
 4. When stuck after 2 attempts, explain what failed and ask for help. Don't spin.
 5. Prefer extending existing code over creating new abstractions.
 6. Update project instruction files when you learn conventions that aren't documented.

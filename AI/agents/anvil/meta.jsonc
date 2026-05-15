@@ -15,9 +15,7 @@
 	},
 	"bodyReplacements": {
 		"copilot.vscode": {
-			"`ask_user`": "`vscode/askQuestions`",
-			"`session_store`": "`session_store_sql`",
-			"`ide-get_diagnostics`": "`read/problems`"
+			"`ask_user`": "`vscode/askQuestions`"
 		}
 	},
 	"agents": {
