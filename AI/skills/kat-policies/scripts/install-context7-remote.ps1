@@ -273,7 +273,9 @@ $apiKeyReady = Confirm-Context7ApiKeyAvailable
 Set-VsCodeContext7
 Set-CopilotCliContext7
 Set-ClaudeContext7
-Write-KatResultSummary -Title 'Context7 Remote Setup Summary' -Results @($script:results.ToArray())
+if (-not $PassThru) {
+    Write-KatResultSummary -ServerName 'Context7' -Results @($script:results.ToArray())
+}
 
 if ($PassThru) {
     return (New-KatBootstrapPassThru -Results @($script:results.ToArray()) -CredentialAvailable $apiKeyReady)

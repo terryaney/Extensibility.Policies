@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path
 $aiRoot = Join-Path $repoRoot 'AI'
-$sharedMappingsPath = Join-Path $PSScriptRoot 'meta.mappings.jsonc'
+$sharedMetaPath = Join-Path $PSScriptRoot 'meta.jsonc'
 $sharedModulePath = Join-Path $PSScriptRoot 'Kat.Policy.Mcp.psm1'
 
 Import-Module $sharedModulePath -Force
@@ -13,7 +13,7 @@ $blockedPaths = New-Object System.Collections.Generic.List[string]
 $deploymentRecords = New-Object System.Collections.Generic.List[object]
 $preSyncManagedPaths = New-Object System.Collections.Generic.List[string]
 $script:claudeContext7Configured = $null
-$script:sharedMetaMappings = $null
+$script:sharedMeta = $null
 
 function Add-Warning {
     param([string]$Message)
@@ -55,20 +55,60 @@ function Add-DeploymentRecord {
     })
 }
 
-function Get-SharedMetaMappings {
-    if ($null -eq $script:sharedMetaMappings) {
-        $script:sharedMetaMappings = Read-CanonicalMeta -Path $sharedMappingsPath
+function Get-SharedMeta {
+    if ($null -eq $script:sharedMeta) {
+        $script:sharedMeta = Read-CanonicalMeta -Path $sharedMetaPath
     }
 
-    return $script:sharedMetaMappings
+    return $script:sharedMeta
 }
 
 function Get-SharedModelMappings {
-    return Get-Prop (Get-SharedMetaMappings) 'models'
+    return Get-Prop (Get-Prop (Get-SharedMeta) 'mappings') 'models'
 }
 
 function Get-SharedToolMappings {
-    return Get-Prop (Get-SharedMetaMappings) 'tools'
+    return Get-Prop (Get-Prop (Get-SharedMeta) 'mappings') 'tools'
+}
+
+function Get-SharedMcpSettings {
+    return Get-Prop (Get-SharedMeta) 'mcp'
+}
+
+function Test-McpClientEnabled {
+    param(
+        [object]$McpConfig,
+        [ValidateSet('vscode', 'cli', 'claude')]
+        [string]$Client
+    )
+
+    if ($null -eq $McpConfig) { return $false }
+
+    if ($Client -eq 'claude') {
+        return ConvertTo-BoolValue (Get-Prop $McpConfig 'claude') $false
+    }
+
+    $topLevel = Get-Prop $McpConfig 'copilot'
+    if ($null -ne $topLevel) {
+        if (ConvertTo-BoolValue $topLevel $false) { return $true }
+        return ConvertTo-BoolValue (Get-Prop $McpConfig "copilot.$Client") $false
+    }
+    $subProp = Get-Prop $McpConfig "copilot.$Client"
+    if ($null -ne $subProp) {
+        return ConvertTo-BoolValue $subProp $false
+    }
+    return $false
+}
+
+function Test-McpParityRequested {
+    param([string]$ServerKey)
+
+    $serverConfig = Get-Prop (Get-SharedMcpSettings) $ServerKey
+    if ($null -eq $serverConfig) { return $false }
+
+    return (Test-McpClientEnabled -McpConfig $serverConfig -Client 'vscode') -or
+           (Test-McpClientEnabled -McpConfig $serverConfig -Client 'cli') -or
+           (Test-McpClientEnabled -McpConfig $serverConfig -Client 'claude')
 }
 
 function Get-EnabledRepositories {
@@ -831,21 +871,71 @@ function Format-ManagedPath {
     return $Path
 }
 
+function Write-McpDeploymentMatrix {
+    param([int]$ArtifactWidth)
+
+    $mcpRecords = @($deploymentRecords | Where-Object Category -eq 'mcp')
+    if ($mcpRecords.Count -eq 0) { return }
+
+    $groups         = $mcpRecords | Group-Object Id | Sort-Object Name
+    $displayTargets = @('vscode', 'copilotCli', 'claude')
+    $statusColWidth = 12
+    $footnotes      = [System.Collections.Generic.List[string]]::new()
+
+    $rows = foreach ($group in $groups) {
+        $cells      = @($group.Name)
+        $cellColors = @($null)
+
+        foreach ($target in $displayTargets) {
+            $record = $group.Group | Where-Object Target -eq $target | Select-Object -First 1
+            $displayValue = if ($null -eq $record) {
+                'excluded'
+            } elseif ($record.Status -eq 'ok') {
+                'installed'
+            } else {
+                $detail = [string]$record.Detail
+                if (-not [string]::IsNullOrWhiteSpace($detail)) {
+                    $marker = Get-FootnoteMarker -Footnotes $footnotes -Detail $detail
+                    "blocked$marker"
+                } else {
+                    'blocked'
+                }
+            }
+
+            $cells      += $displayValue
+            $cellColors += if ($displayValue -like 'blocked*') { 'Red' } elseif ($displayValue -eq 'excluded') { 'DarkYellow' } else { $null }
+        }
+
+        [pscustomobject]@{ Cells = $cells; CellColors = $cellColors }
+    }
+
+    Write-AsciiTable `
+        -Title '--- MCP Server Deployment Status ---' `
+        -Headers @('mcp server', 'vscode', 'cli', 'claude') `
+        -Rows $rows `
+        -Color 'Green' `
+        -FixedWidths @($ArtifactWidth, $statusColWidth, $statusColWidth, $statusColWidth) `
+        -Alignments @('left', 'status', 'status', 'status') `
+        -HeaderAlignments @('left', 'center', 'center', 'center') `
+        -Footnotes $footnotes
+}
+
 function Write-SyncReport {
-    # Write-Host 'KAT policies synchronized.' -ForegroundColor Green
     Write-Host ''
 
-    # Global artifact column width across all categories.
+    # Global artifact column width across all categories + MCP server names.
     # +1 for the ¹ repo marker that may be appended, +2 for cell padding.
     $globalMaxNameLen = @(
         @('agent', 'instruction', 'skill') | ForEach-Object {
             $cat = $_
             @($deploymentRecords | Where-Object Category -eq $cat | Group-Object Id) | ForEach-Object { $_.Name.Length }
         }
+        @($deploymentRecords | Where-Object Category -eq 'mcp' | Group-Object Id) | ForEach-Object { $_.Name.Length }
     ) | Measure-Object -Maximum | Select-Object -ExpandProperty Maximum
     if ($null -eq $globalMaxNameLen) { $globalMaxNameLen = 0 }
-    $globalArtifactWidth = [Math]::Max('artifact'.Length, $globalMaxNameLen + 3)
+    $globalArtifactWidth = [Math]::Max('artifact'.Length, [Math]::Max('mcp server'.Length, $globalMaxNameLen) + 3)
 
+    Write-McpDeploymentMatrix -ArtifactWidth $globalArtifactWidth
     Write-DeploymentMatrix -ArtifactWidth $globalArtifactWidth
     Write-CompatibilitySummary -ArtifactWidth $globalArtifactWidth
     Write-ArtifactLocationsTable
@@ -860,46 +950,41 @@ function Write-SyncReport {
     }
 }
 
-function Test-Context7ParityRequested {
-    param([object[]]$AgentDefinitions)
 
-    foreach ($definition in $AgentDefinitions) {
-        foreach ($toolId in (Get-ConfiguredCanonicalTools -Meta $definition.Meta)) {
-            if ($toolId -like 'io.github.upstash/context7/*') {
-                return $true
-            }
-        }
+function Add-McpDeploymentRecords {
+    param(
+        [string]$ProductName,
+        [object]$PassThruResult
+    )
+
+    $clientTargetMap = @{
+        'vscode'      = 'vscode'
+        'copilot-cli' = 'copilotCli'
+        'claude'      = 'claude'
+        'environment' = 'install'
     }
 
-    return $false
-}
+    foreach ($result in @((Get-Prop $PassThruResult 'Results'))) {
+        if ($null -eq $result) { continue }
 
-function Test-GitHubParityRequested {
-    param([object[]]$AgentDefinitions)
+        $client = [string](Get-Prop $result 'Client')
+        $target = $clientTargetMap[$client]
+        if ($null -eq $target) { continue }
 
-    foreach ($definition in $AgentDefinitions) {
-        foreach ($toolId in (Get-ConfiguredCanonicalTools -Meta $definition.Meta)) {
-            if ($toolId -like 'github/*') {
-                return $true
-            }
+        $status = [string](Get-Prop $result 'Status')
+        $path   = [string](Get-Prop $result 'Path')
+        $detail = [string](Get-Prop $result 'Detail')
+
+        if ([string]::IsNullOrWhiteSpace($path) -or $path -eq '-') { continue }
+
+        $mappedStatus = switch ($status) {
+            'ok'      { 'ok' }
+            'blocked' { 'blocked' }
+            default   { 'disabled' }
         }
+
+        Add-DeploymentRecord -Category 'mcp' -Id $ProductName -Target $target -Status $mappedStatus -Path $path -Detail $detail
     }
-
-    return $false
-}
-
-function Test-KatLedgerParityRequested {
-    param([object[]]$AgentDefinitions)
-
-    foreach ($definition in $AgentDefinitions) {
-        foreach ($toolId in (Get-ConfiguredCanonicalTools -Meta $definition.Meta)) {
-            if ($toolId -like 'kat/ledger/*') {
-                return $true
-            }
-        }
-    }
-
-    return $false
 }
 
 function Write-BootstrapNoClientWarnings {
@@ -932,7 +1017,8 @@ function Invoke-McpBootstrap {
     param(
         [Parameter(Mandatory)][string]$ProductName,
         [Parameter(Mandatory)][string]$HelperScript,
-        [Parameter(Mandatory)][string]$InstallPrompt
+        [Parameter(Mandatory)][string]$InstallPrompt,
+        [Parameter(Mandatory)][object]$McpConfig
     )
 
     $helperScriptPath = Join-Path $PSScriptRoot $HelperScript
@@ -940,18 +1026,21 @@ function Invoke-McpBootstrap {
         throw "$ProductName bootstrap helper script is missing: $helperScriptPath"
     }
 
-    Write-Host ''
-    Write-Host "Checking $ProductName MCP Server compliance..." -ForegroundColor Cyan
-    $checkResult = & $helperScriptPath -CheckOnly -PassThru
+    $skipParams = @{}
+    if (-not (Test-McpClientEnabled -McpConfig $McpConfig -Client 'vscode')) { $skipParams['SkipVsCode'] = $true }
+    if (-not (Test-McpClientEnabled -McpConfig $McpConfig -Client 'cli'))    { $skipParams['SkipCopilotCli'] = $true }
+    if (-not (Test-McpClientEnabled -McpConfig $McpConfig -Client 'claude')) { $skipParams['SkipClaude'] = $true }
 
-    $isCompliant    = [bool](Get-Prop $checkResult 'IsCompliant' $false)
-    $hasBlocked     = [bool](Get-Prop $checkResult 'HasBlocked' $false)
+    $checkResult = & $helperScriptPath @skipParams -CheckOnly -PassThru
+
+    $isCompliant     = [bool](Get-Prop $checkResult 'IsCompliant' $false)
+    $hasBlocked      = [bool](Get-Prop $checkResult 'HasBlocked' $false)
     $requiresInstall = [bool](Get-Prop $checkResult 'RequiresInstall' $false)
 
     Write-BootstrapNoClientWarnings -ProductName $ProductName -CheckResult $checkResult
 
     if ($isCompliant) {
-        Write-Host "$ProductName MCP Server is already compliant." -ForegroundColor Green
+        Add-McpDeploymentRecords -ProductName $ProductName -PassThruResult $checkResult
         return
     }
 
@@ -979,7 +1068,8 @@ function Invoke-McpBootstrap {
         Write-Host "Running $ProductName MCP Server installation..." -ForegroundColor Cyan
     }
 
-    $applyResult = & $helperScriptPath -PassThru
+    $applyResult = & $helperScriptPath @skipParams -PassThru
+    Add-McpDeploymentRecords -ProductName $ProductName -PassThruResult $applyResult
     $applyBlocked = [bool](Get-Prop $applyResult 'HasBlocked' $false)
     if ($applyBlocked) {
         throw "$ProductName MCP Server installation did not complete successfully. Review the summary above."
@@ -991,9 +1081,7 @@ function Invoke-PolicySync {
     $agentDefinitions = Get-AgentDefinitions
     $instructionDefinitions = Get-InstructionDefinitions
     $skillDefinitions = Get-SkillDefinitionsWithContent
-    $context7ParityRequested = Test-Context7ParityRequested -AgentDefinitions $agentDefinitions
-    $githubParityRequested = Test-GitHubParityRequested -AgentDefinitions $agentDefinitions
-    $katLedgerParityRequested = Test-KatLedgerParityRequested -AgentDefinitions $agentDefinitions
+    $mcpSettings = Get-SharedMcpSettings
 
     $managedContexts = Get-ManagedContexts -Roots $roots -AgentDefinitions $agentDefinitions -InstructionDefinitions $instructionDefinitions -SkillDefinitions $skillDefinitions
     foreach ($context in $managedContexts) {
@@ -1012,263 +1100,22 @@ function Invoke-PolicySync {
     Publish-Skills -Roots $roots -Definitions $skillDefinitions
     Publish-ClaudeDocument -Roots $roots -InstructionPublishResult $instructionPublishResult -Definitions $instructionDefinitions
     try {
-        if ($context7ParityRequested) {
-            Invoke-McpBootstrap -ProductName 'Context7' -HelperScript 'install-context7-remote.ps1' -InstallPrompt 'Context7 MCP Server is not compliant. It must be installed for each client in Remote mode. Install now? [Y/n]'
+        if (Test-McpParityRequested -ServerKey 'context7') {
+            Invoke-McpBootstrap -ProductName 'Context7' -HelperScript 'install-context7-remote.ps1' -InstallPrompt 'Context7 MCP Server is not compliant. Install now? [Y/n]' -McpConfig (Get-Prop $mcpSettings 'context7')
         }
 
-        if ($githubParityRequested) {
-            Invoke-McpBootstrap -ProductName 'GitHub' -HelperScript 'install-github-remote.ps1' -InstallPrompt 'GitHub MCP Server is not compliant. Install/enforce GitHub MCP remote setup now? [Y/n]'
+        if (Test-McpParityRequested -ServerKey 'github') {
+            Invoke-McpBootstrap -ProductName 'GitHub' -HelperScript 'install-github-remote.ps1' -InstallPrompt 'GitHub MCP Server is not compliant. Install now? [Y/n]' -McpConfig (Get-Prop $mcpSettings 'github')
         }
 
-        if ($katLedgerParityRequested) {
-            $katLedgerHelperPath = Join-Path $PSScriptRoot 'install-katledger.ps1'
-            if (Test-Path -LiteralPath $katLedgerHelperPath) {
-                Invoke-McpBootstrap -ProductName 'KatLedger' -HelperScript 'install-katledger.ps1' -InstallPrompt 'KatLedger MCP Server is not compliant. Install/enforce KatLedger MCP local setup now? [Y/n]'
-            }
-            else {
-                Add-Warning "KatLedger MCP Server requested by KAT Policies, but bootstrap helper is missing: $katLedgerHelperPath"
-            }
+        if (Test-McpParityRequested -ServerKey 'katledger') {
+            Invoke-McpBootstrap -ProductName 'KatLedger' -HelperScript 'install-katledger.ps1' -InstallPrompt 'KatLedger MCP Server is not compliant. Install now? [Y/n]' -McpConfig (Get-Prop $mcpSettings 'katledger')
         }
     }
     finally {
         Register-RemovedRecords
         Write-SyncReport
     }
-}
-
-function New-AsciiBorder {
-    param(
-        [int[]]$Widths,
-        [int]$Padding = 1
-    )
-
-    $segments = foreach ($width in $Widths) {
-        '-' * ($width + ($Padding * 2))
-    }
-
-    return '+' + ($segments -join '+') + '+'
-}
-
-function Split-AsciiCell {
-    param(
-        [string]$Value,
-        [int]$Width
-    )
-
-    if ($Width -le 0) {
-        return @('')
-    }
-
-    $text = if ($null -eq $Value) { '' } else { [string]$Value }
-    $logicalLines = @($text -split "`r?`n")
-    $outputLines = New-Object System.Collections.Generic.List[string]
-
-    foreach ($line in $logicalLines) {
-        if ([string]::IsNullOrEmpty($line)) {
-            $outputLines.Add('')
-            continue
-        }
-
-        for ($offset = 0; $offset -lt $line.Length; $offset += $Width) {
-            $segmentLength = [Math]::Min($Width, $line.Length - $offset)
-            $outputLines.Add($line.Substring($offset, $segmentLength))
-        }
-    }
-
-    if ($outputLines.Count -eq 0) {
-        $outputLines.Add('')
-    }
-
-    return @($outputLines)
-}
-
-function Format-AsciiCell {
-    param(
-        [string]$Value,
-        [int]$Width,
-        [ValidateSet('left', 'center', 'status')]
-        [string]$Alignment = 'left',
-        [int]$Padding = 1
-    )
-
-    $text = if ($null -eq $Value) { '' } else { [string]$Value }
-    $effectiveAlignment = $Alignment
-    if ($Alignment -eq 'status') {
-        if ($text.Length -le $Width) {
-            $effectiveAlignment = 'center'
-        }
-        else {
-            $effectiveAlignment = 'left'
-        }
-    }
-
-    switch ($effectiveAlignment) {
-        'center' {
-            $leftPad = [Math]::Floor(($Width - $text.Length) / 2)
-            $rightPad = $Width - $text.Length - $leftPad
-            return (' ' * $Padding) + (' ' * $leftPad) + $text + (' ' * $rightPad) + (' ' * $Padding)
-        }
-        default {
-            return (' ' * $Padding) + $text.PadRight($Width) + (' ' * $Padding)
-        }
-    }
-}
-
-function Format-AsciiRow {
-    param(
-        [string[]]$Values,
-        [int[]]$Widths,
-        [string[]]$Alignments,
-        [int]$Padding = 1
-    )
-
-    $cells = for ($index = 0; $index -lt $Widths.Count; $index++) {
-        $value = ''
-        if ($index -lt $Values.Count -and $null -ne $Values[$index]) {
-            $value = [string]$Values[$index]
-        }
-
-        $alignment = 'left'
-        if ($index -lt $Alignments.Count -and -not [string]::IsNullOrWhiteSpace($Alignments[$index])) {
-            $alignment = $Alignments[$index]
-        }
-
-        Format-AsciiCell -Value $value -Width $Widths[$index] -Alignment $alignment -Padding $Padding
-    }
-
-    return '|' + ($cells -join '|') + '|'
-}
-
-function Write-AsciiTable {
-    param(
-        [string]$Title,
-        [string[]]$Headers,
-        [object[]]$Rows,
-        [string]$Color = 'Cyan',
-        [int[]]$FixedWidths = @(),
-        [string[]]$Alignments = @(),
-        [int]$Padding = 1,
-        [string[]]$HeaderAlignments = @(),
-        [bool]$RowDividers = $false,
-        [System.Collections.Generic.List[string]]$Footnotes = $null
-    )
-
-    if ($Rows.Count -eq 0) {
-        return
-    }
-
-    $normalizedRows = foreach ($row in $Rows) {
-        [pscustomobject]@{
-            Cells      = @($row.Cells)
-            Color      = if ($null -ne $row.PSObject.Properties['Color']) { [string]$row.Color } else { $null }
-            CellColors = if ($null -ne $row.PSObject.Properties['CellColors']) { $row.CellColors } else { $null }
-        }
-    }
-
-    $widths = for ($index = 0; $index -lt $Headers.Count; $index++) {
-        $fixedWidth = $null
-        if ($index -lt $FixedWidths.Count -and $FixedWidths[$index] -gt 0) {
-            $fixedWidth = $FixedWidths[$index]
-            $maxWidth = $fixedWidth
-        }
-        else {
-            $maxWidth = $Headers[$index].Length
-        }
-
-        foreach ($row in $normalizedRows) {
-            $rowValues = @($row.Cells)
-            $value = ''
-            if ($index -lt $rowValues.Count -and $null -ne $rowValues[$index]) {
-                $value = [string]$rowValues[$index]
-            }
-
-            $lines = if ($null -ne $fixedWidth) { Split-AsciiCell -Value $value -Width $fixedWidth } else { @($value -split "`r?`n") }
-            foreach ($line in $lines) {
-                if ($line.Length -gt $maxWidth) {
-                    $maxWidth = $line.Length
-                }
-            }
-        }
-
-        $maxWidth
-    }
-
-    $headerAlignmentValues = if ($HeaderAlignments.Count -gt 0) {
-        $HeaderAlignments
-    }
-    else {
-        foreach ($header in $Headers) { 'left' }
-    }
-
-    $border = New-AsciiBorder -Widths $widths -Padding $Padding
-    if (-not [string]::IsNullOrWhiteSpace($Title)) {
-        Write-Host $Title -ForegroundColor $Color
-    }
-    Write-Host $border -ForegroundColor $Color
-    Write-Host (Format-AsciiRow -Values $Headers -Widths $widths -Alignments $headerAlignmentValues -Padding $Padding) -ForegroundColor $Color
-    Write-Host $border -ForegroundColor $Color
-    foreach ($row in $normalizedRows) {
-        $rowCells = @($row.Cells)
-        $wrappedCells = for ($index = 0; $index -lt $widths.Count; $index++) {
-            $value = ''
-            if ($index -lt $rowCells.Count -and $null -ne $rowCells[$index]) {
-                $value = [string]$rowCells[$index]
-            }
-
-            [pscustomobject]@{
-                Lines = @(Split-AsciiCell -Value $value -Width $widths[$index])
-            }
-        }
-
-        $rowHeight = 1
-        foreach ($cell in $wrappedCells) {
-            if (@($cell.Lines).Count -gt $rowHeight) {
-                $rowHeight = @($cell.Lines).Count
-            }
-        }
-
-        $rowColor      = if (-not [string]::IsNullOrWhiteSpace($row.Color)) { $row.Color } else { $Color }
-        $cellColorList = $row.CellColors
-
-        for ($lineIndex = 0; $lineIndex -lt $rowHeight; $lineIndex++) {
-            $lineValues = @(for ($columnIndex = 0; $columnIndex -lt $widths.Count; $columnIndex++) {
-                $cellLines = @($wrappedCells[$columnIndex].Lines)
-                if ($lineIndex -lt $cellLines.Count) { $cellLines[$lineIndex] } else { '' }
-            })
-
-            if ($null -ne $cellColorList -and $cellColorList.Count -gt 0) {
-                for ($ci = 0; $ci -lt $widths.Count; $ci++) {
-                    $perCell = if ($ci -lt $cellColorList.Count -and -not [string]::IsNullOrWhiteSpace($cellColorList[$ci])) { [string]$cellColorList[$ci] } else { $null }
-                    $effectiveColor = if ($null -ne $perCell) { $perCell } else { $rowColor }
-                    $alignment = if ($ci -lt $Alignments.Count -and -not [string]::IsNullOrWhiteSpace($Alignments[$ci])) { $Alignments[$ci] } else { 'left' }
-                    Write-Host -NoNewline '|' -ForegroundColor $rowColor
-                    Write-Host -NoNewline (Format-AsciiCell -Value $lineValues[$ci] -Width $widths[$ci] -Alignment $alignment -Padding $Padding) -ForegroundColor $effectiveColor
-                }
-                Write-Host '|' -ForegroundColor $rowColor
-            }
-            else {
-                Write-Host (Format-AsciiRow -Values $lineValues -Widths $widths -Alignments $Alignments -Padding $Padding) -ForegroundColor $rowColor
-            }
-        }
-
-        if ($RowDividers) {
-            Write-Host $border -ForegroundColor $rowColor
-        }
-    }
-
-    if (-not $RowDividers) {
-        Write-Host $border -ForegroundColor $Color
-    }
-
-    if ($null -ne $Footnotes -and $Footnotes.Count -gt 0) {
-        $superscripts = @('¹','²','³','⁴','⁵','⁶','⁷','⁸','⁹')
-        for ($fi = 0; $fi -lt $Footnotes.Count; $fi++) {
-            $marker = if ($fi -lt $superscripts.Count) { $superscripts[$fi] } else { "[$($fi + 1)]" }
-            Write-Host "  $marker $($Footnotes[$fi])" -ForegroundColor DarkCyan
-        }
-    }
-
-    Write-Host ''
 }
 
 function Write-DeploymentMatrix {
@@ -1428,15 +1275,73 @@ function Write-ArtifactLocationsTable {
         }
     }
 
+    # MCP Config rows: vscode/cli/claude config paths merged across all HTTP servers, deduplicated by client+dir
+    $mcpClientLabels = @{ vscode = 'VSCode'; copilotCli = 'CLI'; claude = 'Claude' }
+    $mcpClientOrder  = @('vscode', 'copilotCli', 'claude')
+
+    foreach ($target in $mcpClientOrder) {
+        $records = @($deploymentRecords | Where-Object {
+            $_.Category -eq 'mcp' -and
+            $_.Target -eq $target -and
+            $_.Status -eq 'ok' -and
+            -not [string]::IsNullOrWhiteSpace($_.Path)
+        })
+        if ($records.Count -eq 0) { continue }
+
+        $allPaths = @($records | ForEach-Object {
+            $_.Path -split ';\s*' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        })
+        $uniqueDirs = @($allPaths | ForEach-Object { Split-Path $_ -Parent } | Sort-Object -Unique)
+        $clientLabel = $mcpClientLabels[$target]
+
+        foreach ($dir in $uniqueDirs) {
+            $key = "mcp-config|$clientLabel|$dir"
+            if ($seenKeys.Add($key)) {
+                $rows += [pscustomobject]@{ Cells = @('MCP Config', $clientLabel, (Format-ManagedPath -Path $dir)) }
+            }
+        }
+    }
+
+    # MCP Install rows: per-server install directories (e.g. KatLedger binary location)
+    $mcpInstallRecords = @($deploymentRecords | Where-Object {
+        $_.Category -eq 'mcp' -and $_.Target -eq 'install' -and
+        $_.Status -eq 'ok' -and -not [string]::IsNullOrWhiteSpace($_.Path)
+    })
+    foreach ($group in ($mcpInstallRecords | Group-Object Id | Sort-Object Name)) {
+        $allPaths = @($group.Group | ForEach-Object {
+            $_.Path -split ';\s*' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        })
+        $uniqueDirs = @($allPaths | ForEach-Object { Split-Path $_ -Parent } | Sort-Object -Unique)
+
+        foreach ($dir in $uniqueDirs) {
+            $key = "mcp-install|$($group.Name)|$dir"
+            if ($seenKeys.Add($key)) {
+                $rows += [pscustomobject]@{ Cells = @("$($group.Name) MCP", 'N/A', (Format-ManagedPath -Path $dir)) }
+            }
+        }
+    }
+
     if ($rows.Count -eq 0) { return }
 
-    $artifactOrder = @{ Agent = 0; Instruction = 1; Skill = 2 }
-    $typeOrder     = @{ VSCode = 0; CLI = 1; Claude = 2; Scoped = 3; Copilot = 4 }
+    $getArtifactRank = {
+        param([string]$Label)
+        switch ($Label) {
+            'Agent'       { return 0 }
+            'Instruction' { return 1 }
+            'Skill'       { return 2 }
+            'MCP Config'  { return 3 }
+            default {
+                if ($Label -like '* MCP') { return 4 }
+                return 99
+            }
+        }
+    }
+    $typeOrder = @{ 'N/A' = 0; VSCode = 1; CLI = 2; Claude = 3; Scoped = 4; Copilot = 5 }
 
     $sortedRows = $rows | Sort-Object {
-        $aRank = if ($artifactOrder.ContainsKey($_.Cells[0])) { $artifactOrder[$_.Cells[0]] } else { 99 }
+        $aRank = & $getArtifactRank $_.Cells[0]
         $tRank = if ($typeOrder.ContainsKey($_.Cells[1])) { $typeOrder[$_.Cells[1]] } else { 99 }
-        '{0:D2}|{1:D2}|{2}' -f $aRank, $tRank, $_.Cells[2]
+        '{0:D2}|{1:D2}|{2}|{3}' -f $aRank, $tRank, $_.Cells[0], $_.Cells[2]
     }
 
     Write-AsciiTable -Title 'Artifact Locations' -Headers @('artifact type', 'client', 'location') -Rows $sortedRows -Color 'Cyan' -Alignments @('left', 'center', 'left') -HeaderAlignments @('left', 'center', 'left')
@@ -2049,6 +1954,7 @@ function Get-ConfiguredCanonicalTools {
     $agentsMeta = Get-Prop $Meta 'agents'
     return (ConvertTo-StringArray (Get-Prop $agentsMeta 'tools'))
 }
+
 
 function Resolve-ModelForClient {
     param(

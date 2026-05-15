@@ -100,9 +100,9 @@ function Test-KatLedgerCommandMatch {
 }
 
 function Test-KatLedgerArgsMatch {
-    param([object[]]$Args)
+    param([object[]]$CommandArgs)
 
-    return @($Args).Count -eq 0
+    return @($CommandArgs).Count -eq 0
 }
 
 function Test-KatLedgerToolsMatch {
@@ -559,7 +559,9 @@ $runtimeState = New-KatLedgerRuntimeState
 Set-VsCodeKatLedger -RuntimeState $runtimeState
 Set-CopilotCliKatLedger -RuntimeState $runtimeState
 Set-ClaudeKatLedger -RuntimeState $runtimeState
-Write-KatResultSummary -Title 'KatLedger Setup Summary' -Results @($script:results.ToArray())
+if (-not $PassThru) {
+    Write-KatResultSummary -ServerName 'KatLedger' -Results @($script:results.ToArray())
+}
 
 if ($PassThru) {
     return (New-KatBootstrapPassThru -Results @($script:results.ToArray()) -CredentialAvailable $runtimeState.Ready)

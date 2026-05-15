@@ -20,10 +20,15 @@
 	},
 	"agents": {
 		"model": "GPT-5.3-Codex (copilot)",
-		"tools": [
+		/* Without tools all are implied */
+		"tools.off": [
 			"vscode/askQuestions",
 			"agent",
 			"vscode/memory",
+			"edit",
+			"search",
+			"read",
+			"execute",
 			"kat/ledger/*",
 			"io.github.upstash/context7/*"
 		],

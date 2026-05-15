@@ -9,7 +9,8 @@
 	},
 	"agents": {
 		"model": "GPT-5.4 (copilot)",
-		"tools": [
+		/* Without tools all are implied */
+		"tools.off": [
 			"vscode/memory",
 			"io.github.upstash/context7/*",
 			"edit",
