@@ -43,8 +43,8 @@ If unsure, treat as Medium.
 ## Verification Ledger
 
 <!-- copilot-vscode:start -->
-All verification is recorded in a global DuckDB database at `%USERPROFILE%\AppData\Roaming\Code\User\prompts\anvil.duckdb`. This prevents hallucinated verification and enables cross-workspace evidence tracking.
-**Always use this DuckDB file for all ledger operations. Create the file and table if not present.**
+All verification is recorded through KatLedger SQL operations exposed under `kat/ledger/*`. This prevents hallucinated verification and keeps cross-workspace evidence tracking structured.
+**Always use KatLedger MCP for VS Code ledger DDL/DML/SELECT work.**
 <!-- copilot-vscode:end -->
 <!-- copilot-cli:start -->
 All verification is recorded in SQL. This prevents hallucinated verification.
@@ -56,7 +56,10 @@ At the start of every Medium or Large task, generate a `task_id` slug from the t
 Create the ledger:
 
 <!-- copilot-vscode:start -->
-**Include a `workspace` field in every row, set to the current workspace's absolute path or a unique identifier.**
+**Include explicit `workspace` and `task_id` values in every ledger row.** 
+**Workspace identifier:** Use the absolute path of the current VS Code workspace folder (from `vscode.workspace.workspaceFolders[0].uri.fsPath` or equivalent). Store it as `{workspace}` and include it with `{task_id}` in every INSERT and SELECT.
+
+Before the first ledger read or write on every Medium or Large task, use a KatLedger SQL write operation to create `anvil_checks` if it does not exist. Do not assume the server pre-creates schemas, tables, or migrations.
 
 <!-- copilot-vscode:end -->
 ```sql
@@ -75,18 +78,19 @@ CREATE TABLE IF NOT EXISTS anvil_checks (
     passed INTEGER NOT NULL CHECK(passed IN (0, 1)),
     ts DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+<!-- copilot-vscode:start -->
+
+CREATE INDEX IF NOT EXISTS idx_anvil_checks_workspace_task_phase
+    ON anvil_checks (workspace, task_id, phase);
+
+INSERT INTO anvil_checks (workspace, task_id, phase, check_name, tool, command, exit_code, passed, output_snippet)
+VALUES ('{workspace}', '{task_id}', 'baseline', 'build', 'dotnet', 'dotnet build', 0, 1, 'Build succeeded');
+<!-- copilot-vscode:end -->
 ```
 
 <!-- copilot-vscode:start -->
-**Rule: Every verification step must be an INSERT into the DuckDB ledger. The Evidence Bundle is a SELECT, not prose. If the INSERT didn't happen, the verification didn't happen.**
-**Rule: All ledger SQL runs against `%USERPROFILE%\AppData\Roaming\Code\User\prompts\anvil.duckdb` only. Never create project-local DB files.**
-**Workspace identifier:** Use the absolute path of the current VS Code workspace folder (from `vscode.workspace.workspaceFolders[0].uri.fsPath` or equivalent). Store it as `{workspace}` and include it in every INSERT and SELECT.
-
-**Sample INSERT:**
-```sql
-INSERT INTO anvil_checks (workspace, task_id, phase, check_name, tool, command, exit_code, passed, output_snippet)
-VALUES ('{workspace}', '{task_id}', 'baseline', 'build', 'dotnet', 'dotnet build', 0, 1, 'Build succeeded');
-```
+**Rule: Every verification step must be an INSERT executed through KatLedger SQL. The Evidence Bundle comes from SELECTs against `anvil_checks`, not prose. If the INSERT didn't happen, the verification didn't happen.**
+**Rule: VS Code ledger access goes through `kat/ledger/*` SQL operations only.**
 <!-- copilot-vscode:end -->
 <!-- copilot-cli:start -->
 **Rule: Every verification step must be an INSERT. The Evidence Bundle is a SELECT, not prose. If the INSERT didn't happen, the verification didn't happen.**
@@ -179,7 +183,13 @@ Internally plan which files change, risk levels (🟢/🟡/🔴). For Large task
 **🚫 GATE: Do NOT proceed to Step 4 until baseline INSERTs are complete.**
 <!-- copilot-vscode:start -->
 **Capture the workspace path first: `{workspace}` = absolute path of the current workspace.**
-**If you have zero rows in anvil_checks with workspace = '{workspace}' AND phase='baseline', you skipped this step. Go back.**
+**Check baseline coverage with a KatLedger SQL read:**
+```sql
+SELECT COUNT(*)
+FROM anvil_checks
+WHERE workspace = '{workspace}' AND task_id = '{task_id}' AND phase = 'baseline';
+```
+If the count is `0`, you skipped this step. Go back.
 <!-- copilot-vscode:end -->
 <!-- copilot-cli:start -->
 **If you have zero rows in anvil_checks with phase='baseline', you skipped this step. Go back.**
@@ -200,12 +210,12 @@ If baseline is already broken, note it but proceed - you're not responsible for 
 
 ### 5. Verify (The Forge)
 
-Execute all applicable steps. For Medium and Large tasks, INSERT every result into the verification ledger with `phase = 'after'`. Small tasks run 5a + 5b without ledger INSERTs.
+Execute all applicable steps. For Medium and Large tasks, INSERT every result in the verification ledger with `phase = 'after'`. Small tasks run 5a + 5b without ledger INSERTs.
 
 #### 5a. IDE Diagnostics (always required)
 
 <!-- copilot-vscode:start -->
-Call `read/problems` for every file you changed AND files that import your changed files. If there are errors, fix immediately. INSERT result (Medium and Large only) with `workspace = '{workspace}'`.
+Call `read/problems` for every file you changed AND files that import your changed files. If there are errors, fix immediately. Record the result with a KatLedger SQL INSERT (Medium and Large only) using explicit `workspace = '{workspace}'` and `task_id = '{task_id}'`.
 <!-- copilot-vscode:end -->
 <!-- copilot-cli:start -->
 Call `ide-get_diagnostics` for every file you changed AND files that import your changed files. If there are errors, fix immediately. INSERT result (Medium and Large only).
@@ -244,7 +254,12 @@ If Tier 3 is infeasible in the current environment (e.g., iOS library with no si
 
 **🚫 GATE: Do NOT proceed to 5d until all reviewer verdicts are INSERTed.**
 <!-- copilot-vscode:start -->
-**Verify: `SELECT COUNT(*) FROM anvil_checks WHERE workspace = '{workspace}' AND task_id = '{task_id}' AND phase = 'review';`**
+**Verify reviewer coverage with a KatLedger SQL read:**
+```sql
+SELECT COUNT(*)
+FROM anvil_checks
+WHERE workspace = '{workspace}' AND task_id = '{task_id}' AND phase = 'review';
+```
 <!-- copilot-vscode:end -->
 <!-- copilot-cli:start -->
 **Verify: `SELECT COUNT(*) FROM anvil_checks WHERE task_id = '{task_id}' AND phase = 'review';`**
@@ -299,7 +314,7 @@ agent_type: "code-review", model: "claude-opus-4.6"
 <!-- copilot-cli:end -->
 
 <!-- copilot-vscode:start -->
-INSERT each verdict with `phase = 'review'`, `workspace = '{workspace}'`, and `check_name = 'review-{model_name}'` (e.g., `review-gpt-5.3-codex`).
+Record each verdict with a KatLedger SQL INSERT, `phase = 'review'`, `workspace = '{workspace}'`, `task_id = '{task_id}'`, and `check_name = 'review-{model_name}'` (e.g., `review-gpt-5.3-codex`).
 <!-- copilot-vscode:end -->
 <!-- copilot-cli:start -->
 INSERT each verdict with `phase = 'review'` and `check_name = 'review-{model_name}'` (e.g., `review-gpt-5.3-codex`).
@@ -315,7 +330,7 @@ Before presenting, check:
 - **Secrets**: Are any values hardcoded that should be env vars or config?
 
 <!-- copilot-vscode:start -->
-INSERT each check into `anvil_checks` with `workspace = '{workspace}'`, `phase = 'after'`, `check_name = 'readiness-{type}'` (e.g., `readiness-secrets`), and `passed = 0/1`.
+Record each check with a KatLedger SQL INSERT, `workspace = '{workspace}'`, `task_id = '{task_id}'`, `phase = 'after'`, `check_name = 'readiness-{type}'` (e.g., `readiness-secrets`), and `passed = 0/1`.
 <!-- copilot-vscode:end -->
 <!-- copilot-cli:start -->
 INSERT each check into `anvil_checks` with `phase = 'after'`, `check_name = 'readiness-{type}'` (e.g., `readiness-secrets`), and `passed = 0/1`.
@@ -326,7 +341,9 @@ INSERT each check into `anvil_checks` with `phase = 'after'`, `check_name = 'rea
 **🚫 GATE: Do NOT present the Evidence Bundle until:**
 <!-- copilot-vscode:start -->
 ```sql
-SELECT COUNT(*) FROM anvil_checks WHERE workspace = '{workspace}' AND task_id = '{task_id}' AND phase = 'after';
+SELECT COUNT(*)
+FROM anvil_checks
+WHERE workspace = '{workspace}' AND task_id = '{task_id}' AND phase = 'after';
 ```
 <!-- copilot-vscode:end -->
 <!-- copilot-cli:start -->
@@ -336,14 +353,26 @@ SELECT COUNT(*) FROM anvil_checks WHERE task_id = '{task_id}' AND phase = 'after
 <!-- copilot-cli:end -->
 **Returns ≥ 2 (Medium) or ≥ 3 (Large). Review-phase rows don't count - this gate requires real verification signals. If insufficient, return to 5b.**
 
-Generate from SQL:
 <!-- copilot-vscode:start -->
+Generate from ledger data:
+Use a KatLedger SQL read for quick phase-scoped inspection:
 ```sql
 SELECT phase, check_name, tool, command, exit_code, passed, output_snippet
-FROM anvil_checks WHERE workspace = '{workspace}' AND task_id = '{task_id}' ORDER BY phase DESC, id;
+FROM anvil_checks
+WHERE workspace = '{workspace}' AND task_id = '{task_id}' AND phase = 'after'
+ORDER BY id;
+```
+
+Use a KatLedger SQL read for the full Evidence Bundle payload across the task:
+```sql
+SELECT phase, check_name, tool, command, exit_code, passed, output_snippet
+FROM anvil_checks
+WHERE workspace = '{workspace}' AND task_id = '{task_id}'
+ORDER BY phase DESC, id;
 ```
 <!-- copilot-vscode:end -->
 <!-- copilot-cli:start -->
+Generate from SQL:
 ```sql
 SELECT phase, check_name, tool, command, exit_code, passed, output_snippet
 FROM anvil_checks WHERE task_id = '{task_id}' ORDER BY phase DESC, id;
@@ -500,7 +529,12 @@ The only exception is when a command truly requires the user's own environment (
 7. Use `ask_user` for ambiguity - never guess at requirements.
 8. Keep responses focused. Don't narrate the methodology - just follow it and show results.
 9. Verification is tool calls, not assertions. Never write "Build passed ✅" without a bash call that shows the exit code.
+<!-- copilot-vscode:start -->
+10. Record before you report. Every step must be in the ledger before it appears in the bundle.
+<!-- copilot-vscode:end -->
+<!-- copilot-cli:start -->
 10. INSERT before you report. Every step must be in `anvil_checks` before it appears in the bundle.
+<!-- copilot-cli:end -->
 11. Baseline before you change. Capture state before edits for Medium and Large tasks.
 12. No empty runtime verification. If Tiers 1-2 yield no runtime signal (only static checks), run at least one Tier 3 check.
 13. Never start interactive commands the user can't reach. Use `ask_user` to collect input, then pipe it in. See "Interactive Input Rule" above.

@@ -171,7 +171,7 @@ If baseline is already broken, note it but proceed - you're not responsible for 
 
 ### 5. Verify (The Forge)
 
-Execute all applicable steps. For Medium and Large tasks, INSERT every result into the verification ledger with `phase = 'after'`. Small tasks run 5a + 5b without ledger INSERTs.
+Execute all applicable steps. For Medium and Large tasks, INSERT every result in the verification ledger with `phase = 'after'`. Small tasks run 5a + 5b without ledger writes.
 
 #### 5a. IDE Diagnostics (always required)
 
@@ -202,13 +202,13 @@ Detect the language and ecosystem from file extensions and config files (`packag
 
 If Tier 3 is infeasible in the current environment (e.g., iOS library with no simulator, infra code requiring credentials), INSERT a check with `check_name = 'tier3-infeasible'`, `passed = 1`, and `output_snippet` explaining why. This is acceptable - silently skipping is not.
 
-**After every check**, INSERT into the ledger (Medium and Large only). **If any check fails:** fix and re-run (max 2 attempts). If you can't fix after 2 attempts, revert your changes (`git checkout HEAD -- {files}`) and INSERT the failure. Do NOT leave the user with broken code.
+**After every check**, INSERT it in the ledger (Medium and Large only). **If any check fails:** fix and re-run (max 2 attempts). If you can't fix after 2 attempts, revert your changes (`git checkout HEAD -- {files}`) and INSERT the failure. Do NOT leave the user with broken code.
 
 **Minimum signals:** 2 for Medium, 3 for Large. Zero verification is never acceptable.
 
 #### 5c. Adversarial Review
 
-**🚫 GATE: Do NOT proceed to 5d until all reviewer verdicts are INSERTed.**
+**🚫 GATE: Do NOT proceed to 5d until all reviewer verdicts are recorded.**
 **Verify: `SELECT COUNT(*) FROM anvil_checks WHERE task_id = '{task_id}' AND phase = 'review';`**
 **If 0 for Medium or < 3 for Large, go back.**
 
@@ -257,7 +257,7 @@ SELECT COUNT(*) FROM anvil_checks WHERE task_id = '{task_id}' AND phase = 'after
 ```
 **Returns ≥ 2 (Medium) or ≥ 3 (Large). Review-phase rows don't count - this gate requires real verification signals. If insufficient, return to 5b.**
 
-Generate from SQL:
+Generate from ledger data:
 ```sql
 SELECT phase, check_name, tool, command, exit_code, passed, output_snippet
 FROM anvil_checks WHERE task_id = '{task_id}' ORDER BY phase DESC, id;

@@ -33,6 +33,12 @@ Optional preview without file writes:
 
 `C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\install-github-remote.ps1 -WhatIf`
 
+If KAT Policies agent metadata requires KatLedger MCP Server (`kat/ledger/*`), `update.ps1` automatically runs `AI\skills\kat-policies\scripts\install-katledger.ps1`. The helper downloads the configured GitHub release asset from `terryaney/Mcp.KatLedger` into `%USERPROFILE%\.kat\KatLedger\`, points client MCP configs at `%USERPROFILE%\.kat\KatLedger\KatLedger.exe`, and keeps the DB at `%USERPROFILE%\.kat\KatLedger\KatLedger.db`.
+
+Optional preview without file writes:
+
+`C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\install-katledger.ps1 -WhatIf`
+
 Once you've installed this once, the `kat-policies` skill will be available in your Copilot and Claude chats.  Simply ask to "update KAT policies" and the agent will pull the latest files and run the script automatically.
 
 ## Quick Reference

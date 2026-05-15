@@ -888,6 +888,20 @@ function Test-GitHubParityRequested {
     return $false
 }
 
+function Test-KatLedgerParityRequested {
+    param([object[]]$AgentDefinitions)
+
+    foreach ($definition in $AgentDefinitions) {
+        foreach ($toolId in (Get-ConfiguredCanonicalTools -Meta $definition.Meta)) {
+            if ($toolId -like 'kat/ledger/*') {
+                return $true
+            }
+        }
+    }
+
+    return $false
+}
+
 function Write-BootstrapNoClientWarnings {
     param(
         [string]$ProductName,
@@ -914,7 +928,7 @@ function Write-BootstrapNoClientWarnings {
     }
 }
 
-function Invoke-McpRemoteBootstrap {
+function Invoke-McpBootstrap {
     param(
         [Parameter(Mandatory)][string]$ProductName,
         [Parameter(Mandatory)][string]$HelperScript,
@@ -979,6 +993,7 @@ function Invoke-PolicySync {
     $skillDefinitions = Get-SkillDefinitionsWithContent
     $context7ParityRequested = Test-Context7ParityRequested -AgentDefinitions $agentDefinitions
     $githubParityRequested = Test-GitHubParityRequested -AgentDefinitions $agentDefinitions
+    $katLedgerParityRequested = Test-KatLedgerParityRequested -AgentDefinitions $agentDefinitions
 
     $managedContexts = Get-ManagedContexts -Roots $roots -AgentDefinitions $agentDefinitions -InstructionDefinitions $instructionDefinitions -SkillDefinitions $skillDefinitions
     foreach ($context in $managedContexts) {
@@ -998,11 +1013,21 @@ function Invoke-PolicySync {
     Publish-ClaudeDocument -Roots $roots -InstructionPublishResult $instructionPublishResult -Definitions $instructionDefinitions
     try {
         if ($context7ParityRequested) {
-            Invoke-McpRemoteBootstrap -ProductName 'Context7' -HelperScript 'install-context7-remote.ps1' -InstallPrompt 'Context7 MCP Server is not compliant. It must be installed for each client in Remote mode. Install now? [Y/n]'
+            Invoke-McpBootstrap -ProductName 'Context7' -HelperScript 'install-context7-remote.ps1' -InstallPrompt 'Context7 MCP Server is not compliant. It must be installed for each client in Remote mode. Install now? [Y/n]'
         }
 
         if ($githubParityRequested) {
-            Invoke-McpRemoteBootstrap -ProductName 'GitHub' -HelperScript 'install-github-remote.ps1' -InstallPrompt 'GitHub MCP Server is not compliant. Install/enforce GitHub MCP remote setup now? [Y/n]'
+            Invoke-McpBootstrap -ProductName 'GitHub' -HelperScript 'install-github-remote.ps1' -InstallPrompt 'GitHub MCP Server is not compliant. Install/enforce GitHub MCP remote setup now? [Y/n]'
+        }
+
+        if ($katLedgerParityRequested) {
+            $katLedgerHelperPath = Join-Path $PSScriptRoot 'install-katledger.ps1'
+            if (Test-Path -LiteralPath $katLedgerHelperPath) {
+                Invoke-McpBootstrap -ProductName 'KatLedger' -HelperScript 'install-katledger.ps1' -InstallPrompt 'KatLedger MCP Server is not compliant. Install/enforce KatLedger MCP local setup now? [Y/n]'
+            }
+            else {
+                Add-Warning "KatLedger MCP Server requested by KAT Policies, but bootstrap helper is missing: $katLedgerHelperPath"
+            }
         }
     }
     finally {
@@ -2799,3 +2824,4 @@ function Install-RenderedSkill {
 }
 
 Invoke-PolicySync
+

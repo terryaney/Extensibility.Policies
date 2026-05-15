@@ -26,6 +26,9 @@
 		"github/*": {
 			"claude": [ "Bash", "WebFetch" ]
 		},
+		"kat/ledger/*": {
+			"copilotCli": false
+		},
 		"io.github.upstash/context7/*": {
 			"claude": [ "mcp__context7__resolve-library-id", "mcp__context7__get-library-docs" ]
 		},

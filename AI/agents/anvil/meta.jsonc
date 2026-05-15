@@ -24,6 +24,7 @@
 			"vscode/askQuestions",
 			"agent",
 			"vscode/memory",
+			"kat/ledger/*",
 			"io.github.upstash/context7/*"
 		],
 		"userInvocable": true
