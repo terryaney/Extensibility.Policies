@@ -37,6 +37,9 @@ ALWAYS use #context7 MCP Server to read relevant documentation for external libr
 - Follow standard C# naming conventions
 - Prefer explicit over implicit when clarity matters
 - Write/suggest tests for business logic, not infrastructure plumbing
+- Do not introduce whitespace-only diffs (including trailing spaces or extra blank lines at EOF).
+- If a formatter or editor introduces whitespace-only changes, revert those hunks before presenting.
+- Keep newline style and EOF newline behavior consistent with the existing file(s) unless the task explicitly requires normalization.
 
 # Code Review
 Whenever doing a code review (either on your own or explicitly requested), and a specific 'code review' agent/, command/skill is not being used:

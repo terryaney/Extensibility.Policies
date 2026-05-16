@@ -82,6 +82,7 @@ CREATE INDEX IF NOT EXISTS idx_anvil_checks_workspace_task_phase
 
 <!-- copilot-vscode:start -->
 **Workspace identifier:** Include explicit `workspace` value in every ledger row determined via the absolute path of the current VS Code workspace folder (from `vscode.workspace.workspaceFolders[0].uri.fsPath` or equivalent). Store it as `{workspace}` and include it with final execution `{task_id}` in every INSERT and SELECT.
+**Workspace path format (required):** On Windows, normalize `{workspace}` to a drive-letter absolute path with single backslashes (for example, `C:\BTR\Camelot\Websites\ESS\Nexgen`). Do not use URI/path-slash forms (for example, `c:/...`) and do not emit doubled separators in the stored value.
 
 <!-- copilot-vscode:end -->
 At the start of every task, generate an internal `base_task_id` slug from the task description (e.g., `fix-login-crash`, `add-user-avatar`).
@@ -592,3 +593,6 @@ The only exception is when a command truly requires the user's own environment (
 14. No silent downgrade. Medium/Large classification cannot drop to Small-path verification without explicit `ask_user` waiver.
 15. No completion before final gate query. Medium/Large tasks must pass the pre-present baseline/after/review count gate (or have an explicit waiver) before completion messaging.
 16. No skipped INSERT. Every verification signal, including failures and infeasibility notes, must be inserted before any retry or reporting.
+<!-- copilot-vscode:start -->
+17. Use one canonical `{workspace}` value for all INSERT and SELECT operations in a task. Normalize once, then reuse it unchanged.
+<!-- copilot-vscode:end -->
