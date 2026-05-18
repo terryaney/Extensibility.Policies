@@ -165,7 +165,7 @@
                 "guid": "{7c2d8c34-4f7a-4d1f-8f5d-8b7c4b6b9cda}",
                 "hidden": false,
                 "icon": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\vpn.png",
-                "name": "VPN Proxy - Shitbox Server",
+                "name": "VPN Proxy - conduent-pos",
                 "startingDirectory": "C:\\BTR\\Extensibility\\PowerShell"
             },
             {
@@ -178,8 +178,21 @@
                 "guid": "{b7f9c3e2-4a1e-4d6b-bf0a-9d3a2f8c6e1a}",
                 "hidden": false,
                 "icon": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\vpn.png",
-                "name": "VPN Proxy - Desktop",
-                "startingDirectory": "C:\\BTR\\Extensibility\\PowerShell"
+                "name": "VPN Proxy - Desktop (WAN)",
+                "startingDirectory": "C:\\BTR\\Extensibility\\PowerShell\\WireguardWan"
+            },
+            {
+                "background": "#08082E",
+                "backgroundImage": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\vpn.png",
+                "backgroundImageAlignment": "bottomRight",
+                "backgroundImageOpacity": 0.1,
+                "backgroundImageStretchMode": "none",
+                "commandline": "pwsh.exe -NoExit -Command \"Write-Host 'DO NOT CLOSE this Terminal tab, it is needed for VPN support.' -ForegroundColor Yellow; python -m http.server 8080\"",
+                "guid": "{9ab6fbb2-ee62-4e2e-a944-e3abbc58c771}",
+                "hidden": false,
+                "icon": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\vpn.png",
+                "name": "VPN Proxy - Desktop (LAN)",
+                "startingDirectory": "C:\\BTR\\Extensibility\\PowerShell\\WireguardLan"
             },
             {
                 "commandline": "powershell.exe",
