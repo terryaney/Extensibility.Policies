@@ -1393,7 +1393,7 @@ function Write-CompatibilitySummary {
         }
     }
 
-    $summaryRows = foreach ($label in $rollups.Keys) {
+    $summaryRows = @(foreach ($label in $rollups.Keys) {
         $items = @($rollups[$label])
         if ($items.Count -eq 0) {
             continue
@@ -1402,7 +1402,7 @@ function Write-CompatibilitySummary {
         [pscustomobject]@{
             Cells = @(($items -join "`n"), "$label ($($items.Count))")
         }
-    }
+    })
 
     if ($otherMessages.Count -gt 0) {
         $summaryRows += [pscustomobject]@{
