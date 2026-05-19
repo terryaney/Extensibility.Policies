@@ -1406,7 +1406,7 @@ function Write-CompatibilitySummary {
 
     if ($otherMessages.Count -gt 0) {
         $summaryRows += [pscustomobject]@{
-            Cells = @(($otherMessages | Sort-Object -Unique) -join "`n", "Other ($($otherMessages.Count))")
+            Cells = @((($otherMessages | Sort-Object -Unique) -join "`n"), "Other ($($otherMessages.Count))")
         }
     }
 
