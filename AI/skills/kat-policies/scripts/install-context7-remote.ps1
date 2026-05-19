@@ -44,16 +44,12 @@ function Test-Context7ApiKeyEnvAvailable {
 
 function Show-MissingApiKeyInstructions {
     Write-Host ''
-    Write-Host 'KAT Policies did not install Context7 MCP because CONTEXT7_API_KEY is missing.' -ForegroundColor Yellow
+    Write-Host 'CONTEXT7_API_KEY is not set. Context7 MCP requires an API key to operate.' -ForegroundColor Yellow
     Write-Host ''
-    Write-Host 'To fix this:'
+    Write-Host 'To obtain a Context7 API key:'
     Write-Host '  1. Go to https://context7.com and sign in (or create an account).'
     Write-Host '  2. In your account profile, create a new API key named "KAT API Key".'
-    Write-Host '  3. Store the API key securely.'
-    Write-Host '  4. Set CONTEXT7_API_KEY in your environment:'
-    Write-Host '     [Environment]::SetEnvironmentVariable("CONTEXT7_API_KEY", "<your-key>", "User")'
-    Write-Host '  5. Open a new terminal and rerun this command:'
-    Write-Host ('     & "{0}"' -f $PSCommandPath)
+    Write-Host '  3. Copy the key and paste it when prompted below.'
     Write-Host ''
 }
 
@@ -67,23 +63,30 @@ function Confirm-Context7ApiKeyAvailable {
         return $false
     }
 
-    while (-not (Test-Context7ApiKeyEnvAvailable)) {
-        Show-MissingApiKeyInstructions
-
-        if (-not (Test-KatInteractiveHost)) {
-            throw 'CONTEXT7_API_KEY is not set in Process, User, or Machine scope. Set it first.'
-        }
-
-        $choice = Read-Host 'Select [1] Continue after setting key, [2] Cancel'
-        switch ($choice) {
-            '1' { }
-            '2' { throw 'Context7 installation cancelled by user because CONTEXT7_API_KEY is missing.' }
-            default {
-                Write-Host 'Invalid option. Enter 1 or 2.' -ForegroundColor Yellow
-            }
-        }
+    if (-not (Test-KatInteractiveHost)) {
+        Add-Result -Client 'environment' -Status 'blocked' -Method 'env' -Path '-' -Detail 'CONTEXT7_API_KEY is missing and no interactive host is available to prompt for it.'
+        return $false
     }
 
+    Show-MissingApiKeyInstructions
+
+    # Key is captured masked and never written to stdout or returned to any caller.
+    $secureKey = Read-Host 'Paste your Context7 API key (input is hidden)' -AsSecureString
+    $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureKey)
+    $keyValue = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
+    [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+
+    if ([string]::IsNullOrWhiteSpace($keyValue)) {
+        $keyValue = $null
+        Add-Result -Client 'environment' -Status 'blocked' -Method 'env' -Path '-' -Detail 'CONTEXT7_API_KEY was not provided. Installation cannot proceed.'
+        return $false
+    }
+
+    [Environment]::SetEnvironmentVariable('CONTEXT7_API_KEY', $keyValue, 'User')
+    [Environment]::SetEnvironmentVariable('CONTEXT7_API_KEY', $keyValue, 'Process')
+    $keyValue = $null
+
+    Write-Host 'CONTEXT7_API_KEY saved to User environment.' -ForegroundColor Green
     return $true
 }
 

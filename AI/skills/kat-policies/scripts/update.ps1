@@ -1017,7 +1017,6 @@ function Invoke-McpBootstrap {
     param(
         [Parameter(Mandatory)][string]$ProductName,
         [Parameter(Mandatory)][string]$HelperScript,
-        [Parameter(Mandatory)][string]$InstallPrompt,
         [Parameter(Mandatory)][object]$McpConfig
     )
 
@@ -1045,23 +1044,7 @@ function Invoke-McpBootstrap {
     }
 
     if ($hasBlocked) {
-        Write-Host "$ProductName MCP Server compliance check reported blocked entries. Install may still require manual intervention." -ForegroundColor Yellow
-    }
-
-    $shouldInstall = $true
-    $isInteractiveHost = [Environment]::UserInteractive -and $Host.Name -ne 'ServerRemoteHost'
-    if ($isInteractiveHost) {
-        Write-Host ''
-        $choice = Read-Host $InstallPrompt
-        if ($choice -match '^(n|no)$') {
-            $shouldInstall = $false
-        }
-    }
-
-    if (-not $shouldInstall) {
-        Add-Warning "$ProductName MCP Server requested by KAT Policies, but installation was skipped by the user."
-        Write-Host "Skipped $ProductName MCP Server installation at user request." -ForegroundColor Yellow
-        return
+        Write-Host "$ProductName MCP Server compliance check reported blocked entries. Attempting installation..." -ForegroundColor Yellow
     }
 
     if ($requiresInstall -or $hasBlocked) {
@@ -1072,7 +1055,7 @@ function Invoke-McpBootstrap {
     Add-McpDeploymentRecords -ProductName $ProductName -PassThruResult $applyResult
     $applyBlocked = [bool](Get-Prop $applyResult 'HasBlocked' $false)
     if ($applyBlocked) {
-        throw "$ProductName MCP Server installation did not complete successfully. Review the summary above."
+        Add-Warning "$ProductName MCP Server installation did not complete successfully. Review the summary above."
     }
 }
 
@@ -1101,15 +1084,15 @@ function Invoke-PolicySync {
     Publish-ClaudeDocument -Roots $roots -InstructionPublishResult $instructionPublishResult -Definitions $instructionDefinitions
     try {
         if (Test-McpParityRequested -ServerKey 'context7') {
-            Invoke-McpBootstrap -ProductName 'Context7' -HelperScript 'install-context7-remote.ps1' -InstallPrompt 'Context7 MCP Server is not compliant. Install now? [Y/n]' -McpConfig (Get-Prop $mcpSettings 'context7')
+            Invoke-McpBootstrap -ProductName 'Context7' -HelperScript 'install-context7-remote.ps1' -McpConfig (Get-Prop $mcpSettings 'context7')
         }
 
         if (Test-McpParityRequested -ServerKey 'github') {
-            Invoke-McpBootstrap -ProductName 'GitHub' -HelperScript 'install-github-remote.ps1' -InstallPrompt 'GitHub MCP Server is not compliant. Install now? [Y/n]' -McpConfig (Get-Prop $mcpSettings 'github')
+            Invoke-McpBootstrap -ProductName 'GitHub' -HelperScript 'install-github-remote.ps1' -McpConfig (Get-Prop $mcpSettings 'github')
         }
 
         if (Test-McpParityRequested -ServerKey 'katledger') {
-            Invoke-McpBootstrap -ProductName 'KatLedger' -HelperScript 'install-katledger.ps1' -InstallPrompt 'KatLedger MCP Server is not compliant. Install now? [Y/n]' -McpConfig (Get-Prop $mcpSettings 'katledger')
+            Invoke-McpBootstrap -ProductName 'KatLedger' -HelperScript 'install-katledger.ps1' -McpConfig (Get-Prop $mcpSettings 'katledger')
         }
     }
     finally {

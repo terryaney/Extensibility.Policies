@@ -79,22 +79,49 @@ function Show-MissingGitHubPatInstructions {
     $script:githubPatGuidanceShown = $true
 
     Write-Host ''
-    Write-Host 'KAT Policies could not find GitHub PAT auth in environment variables.' -ForegroundColor Yellow
+    Write-Host 'GITHUB_TOKEN is not set. GitHub MCP requires a PAT for full functionality.' -ForegroundColor Yellow
     if (-not [string]::IsNullOrWhiteSpace($Reason)) {
         Write-Host "Reason: $Reason" -ForegroundColor Yellow
     }
 
     Write-Host ''
-    Write-Host 'GitHub auth is still required for this setup.' -ForegroundColor Yellow
-    Write-Host 'To create and configure a GitHub PAT:'
+    Write-Host 'To create a GitHub Personal Access Token:'
     Write-Host '  1. Open: https://github.com/settings/tokens/new'
     Write-Host '  2. Create a token (classic is the simplest option for this workflow).'
     Write-Host '  3. Grant scopes: repo (add read:org/workflow if your workflows need them).'
-    Write-Host '  4. Set this env var in User scope:'
-    Write-Host '     [Environment]::SetEnvironmentVariable("GITHUB_TOKEN", "<your-token>", "User")'
-    Write-Host '  5. Open a new terminal and rerun this command:'
-    Write-Host ('     & "{0}"' -f $PSCommandPath)
+    Write-Host '  4. Copy the token and paste it when prompted below.'
     Write-Host ''
+}
+
+function Confirm-GitHubPatAvailable {
+    if (Test-GitHubPatEnvAvailable) {
+        return $true
+    }
+
+    if ($CheckOnly -or -not (Test-KatInteractiveHost)) {
+        return $false
+    }
+
+    Show-MissingGitHubPatInstructions -Reason 'A PAT is required for Claude remote GitHub MCP and recommended for Copilot CLI.'
+
+    # Key is captured masked and never written to stdout or returned to any caller.
+    $secureKey = Read-Host 'Paste your GitHub PAT (input is hidden), or press Enter to skip' -AsSecureString
+    $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureKey)
+    $keyValue = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
+    [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+
+    if ([string]::IsNullOrWhiteSpace($keyValue)) {
+        $keyValue = $null
+        Write-Host 'No PAT provided. Proceeding without PAT (some clients may not be fully configured).' -ForegroundColor Yellow
+        return $false
+    }
+
+    [Environment]::SetEnvironmentVariable('GITHUB_TOKEN', $keyValue, 'User')
+    [Environment]::SetEnvironmentVariable('GITHUB_TOKEN', $keyValue, 'Process')
+    $keyValue = $null
+
+    Write-Host 'GITHUB_TOKEN saved to User environment.' -ForegroundColor Green
+    return $true
 }
 
 function Get-AuthModeDescription {
@@ -411,6 +438,8 @@ function Set-ClaudeGitHub {
         Add-Result -Client 'claude' -Status 'blocked' -Method 'file' -Path $configPath -Detail 'Remote PAT was not found. Auth is still required; set GITHUB_TOKEN before configuring Claude GitHub MCP.'
     }
 }
+
+Confirm-GitHubPatAvailable | Out-Null
 
 Set-VsCodeGitHubRemote
 Set-CopilotCliGitHubRemote
