@@ -79,11 +79,7 @@ function Show-MissingGitHubPatInstructions {
     $script:githubPatGuidanceShown = $true
 
     Write-Host ''
-    Write-Host 'GITHUB_TOKEN is not set. GitHub MCP requires a PAT for full functionality.' -ForegroundColor Yellow
-    if (-not [string]::IsNullOrWhiteSpace($Reason)) {
-        Write-Host "Reason: $Reason" -ForegroundColor Yellow
-    }
-
+    Write-Host 'GitHub requires a Personal Access Token (PAT) for full functionality.'
     Write-Host ''
     Write-Host 'To create a GitHub Personal Access Token:'
     Write-Host '  1. Open: https://github.com/settings/tokens/new'
@@ -112,7 +108,6 @@ function Confirm-GitHubPatAvailable {
 
     if ([string]::IsNullOrWhiteSpace($keyValue)) {
         $keyValue = $null
-        Write-Host 'No PAT provided. Proceeding without PAT (some clients may not be fully configured).' -ForegroundColor Yellow
         return $false
     }
 
@@ -270,10 +265,6 @@ function Set-CopilotCliGitHubRemote {
         $patAvailable = Test-GitHubPatEnvAvailable
         $patReference = Get-GitHubPatEnvReference
 
-        if (-not $patAvailable) {
-            Show-MissingGitHubPatInstructions -Reason 'Copilot CLI remote override can use host OAuth best effort, but PAT is recommended for reliable authenticated write operations.'
-        }
-
         if ($CheckOnly) {
             if ($patAvailable) {
                 Add-Result -Client 'copilot-cli' -Status 'needs-install' -Method 'file' -Path $configPath -Detail "Needs remote non-readonly GitHub MCP override (github-mcp-server) using PAT reference $patReference."
@@ -386,6 +377,7 @@ function Set-ClaudeGitHub {
         $isRemoteCompliant = $existingType -ieq 'http' -and
             $existingUrl -eq $targetUrl -and
             $hasRemoteAuthorization -and
+            (Test-GitHubPatEnvAvailable) -and
             -not $isReadOnlyByHeader
 
         if ($isRemoteCompliant) {
@@ -396,10 +388,6 @@ function Set-ClaudeGitHub {
 
         $patReady = Test-GitHubPatEnvAvailable
         $hasLocalConfig = -not [string]::IsNullOrWhiteSpace($existingCommand)
-
-        if (-not $patReady) {
-            Show-MissingGitHubPatInstructions -Reason 'Claude remote GitHub MCP requires PAT auth. Existing local fallback can remain, but new remote or Docker fallback setup still requires GITHUB_TOKEN.'
-        }
 
         if ($CheckOnly) {
             if ($patReady) {

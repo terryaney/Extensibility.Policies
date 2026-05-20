@@ -975,12 +975,14 @@ function Add-McpDeploymentRecords {
         $path   = [string](Get-Prop $result 'Path')
         $detail = [string](Get-Prop $result 'Detail')
 
-        if ([string]::IsNullOrWhiteSpace($path) -or $path -eq '-') { continue }
-
         $mappedStatus = switch ($status) {
             'ok'      { 'ok' }
             'blocked' { 'blocked' }
             default   { 'disabled' }
+        }
+
+        if ([string]::IsNullOrWhiteSpace($path) -or $path -eq '-') {
+            if ($mappedStatus -ne 'blocked') { continue }
         }
 
         Add-DeploymentRecord -Category 'mcp' -Id $ProductName -Target $target -Status $mappedStatus -Path $path -Detail $detail
@@ -1032,9 +1034,7 @@ function Invoke-McpBootstrap {
 
     $checkResult = & $helperScriptPath @skipParams -CheckOnly -PassThru
 
-    $isCompliant     = [bool](Get-Prop $checkResult 'IsCompliant' $false)
-    $hasBlocked      = [bool](Get-Prop $checkResult 'HasBlocked' $false)
-    $requiresInstall = [bool](Get-Prop $checkResult 'RequiresInstall' $false)
+    $isCompliant = [bool](Get-Prop $checkResult 'IsCompliant' $false)
 
     Write-BootstrapNoClientWarnings -ProductName $ProductName -CheckResult $checkResult
 
@@ -1043,20 +1043,8 @@ function Invoke-McpBootstrap {
         return
     }
 
-    if ($hasBlocked) {
-        Write-Host "$ProductName MCP Server compliance check reported blocked entries. Attempting installation..." -ForegroundColor Yellow
-    }
-
-    if ($requiresInstall -or $hasBlocked) {
-        Write-Host "Running $ProductName MCP Server installation..." -ForegroundColor Cyan
-    }
-
     $applyResult = & $helperScriptPath @skipParams -PassThru
     Add-McpDeploymentRecords -ProductName $ProductName -PassThruResult $applyResult
-    $applyBlocked = [bool](Get-Prop $applyResult 'HasBlocked' $false)
-    if ($applyBlocked) {
-        Add-Warning "$ProductName MCP Server installation did not complete successfully. Review the summary above."
-    }
 }
 
 function Invoke-PolicySync {
@@ -1393,7 +1381,7 @@ function Write-CompatibilitySummary {
         }
     }
 
-    $summaryRows = @(foreach ($label in $rollups.Keys) {
+    $summaryRows = foreach ($label in $rollups.Keys) {
         $items = @($rollups[$label])
         if ($items.Count -eq 0) {
             continue
@@ -1402,7 +1390,7 @@ function Write-CompatibilitySummary {
         [pscustomobject]@{
             Cells = @(($items -join "`n"), "$label ($($items.Count))")
         }
-    })
+    }
 
     if ($otherMessages.Count -gt 0) {
         $summaryRows += [pscustomobject]@{

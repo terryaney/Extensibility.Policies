@@ -44,7 +44,7 @@ function Test-Context7ApiKeyEnvAvailable {
 
 function Show-MissingApiKeyInstructions {
     Write-Host ''
-    Write-Host 'CONTEXT7_API_KEY is not set. Context7 MCP requires an API key to operate.' -ForegroundColor Yellow
+    Write-Host 'Context7 requires an API key to operate.'
     Write-Host ''
     Write-Host 'To obtain a Context7 API key:'
     Write-Host '  1. Go to https://context7.com and sign in (or create an account).'
@@ -71,7 +71,7 @@ function Confirm-Context7ApiKeyAvailable {
     Show-MissingApiKeyInstructions
 
     # Key is captured masked and never written to stdout or returned to any caller.
-    $secureKey = Read-Host 'Paste your Context7 API key (input is hidden)' -AsSecureString
+    $secureKey = Read-Host 'Paste your Context7 API key (input is hidden), or press Enter to skip' -AsSecureString
     $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureKey)
     $keyValue = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
     [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
@@ -86,7 +86,6 @@ function Confirm-Context7ApiKeyAvailable {
     [Environment]::SetEnvironmentVariable('CONTEXT7_API_KEY', $keyValue, 'Process')
     $keyValue = $null
 
-    Write-Host 'CONTEXT7_API_KEY saved to User environment.' -ForegroundColor Green
     return $true
 }
 
@@ -273,9 +272,15 @@ function Set-ClaudeContext7 {
 
 $apiKeyReady = Confirm-Context7ApiKeyAvailable
 
-Set-VsCodeContext7
-Set-CopilotCliContext7
-Set-ClaudeContext7
+if ($apiKeyReady) {
+    Set-VsCodeContext7
+    Set-CopilotCliContext7
+    Set-ClaudeContext7
+} else {
+    if (-not $SkipVsCode)     { Add-Result -Client 'vscode'      -Status 'blocked' -Method 'env' -Path '-' -Detail 'CONTEXT7_API_KEY is not set.' }
+    if (-not $SkipCopilotCli) { Add-Result -Client 'copilot-cli' -Status 'blocked' -Method 'env' -Path '-' -Detail 'CONTEXT7_API_KEY is not set.' }
+    if (-not $SkipClaude)     { Add-Result -Client 'claude'      -Status 'blocked' -Method 'env' -Path '-' -Detail 'CONTEXT7_API_KEY is not set.' }
+}
 if (-not $PassThru) {
     Write-KatResultSummary -ServerName 'Context7' -Results @($script:results.ToArray())
 }
