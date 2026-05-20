@@ -4,6 +4,7 @@ param(
     [switch]$SkipCopilotCli,
     [switch]$SkipClaude,
     [switch]$CheckOnly,
+    [switch]$NonInteractive,
     [switch]$PassThru
 )
 

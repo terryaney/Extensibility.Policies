@@ -405,7 +405,8 @@ function Write-AsciiTable {
 		[int]$Padding = 1,
 		[string[]]$HeaderAlignments = @(),
 		[bool]$RowDividers = $false,
-		[System.Collections.Generic.List[string]]$Footnotes = $null
+		[System.Collections.Generic.List[string]]$Footnotes = $null,
+		[System.Collections.Generic.List[string]]$FootnoteColors = $null
 	)
 
 	if ($Rows.Count -eq 0) {
@@ -519,7 +520,8 @@ function Write-AsciiTable {
 		$superscripts = @('¹','²','³','⁴','⁵','⁶','⁷','⁸','⁹')
 		for ($fi = 0; $fi -lt $Footnotes.Count; $fi++) {
 			$marker = if ($fi -lt $superscripts.Count) { $superscripts[$fi] } else { "[$($fi + 1)]" }
-			Write-Host "  $marker $($Footnotes[$fi])" -ForegroundColor DarkCyan
+			$fnColor = if ($null -ne $FootnoteColors -and $fi -lt $FootnoteColors.Count -and -not [string]::IsNullOrWhiteSpace($FootnoteColors[$fi])) { $FootnoteColors[$fi] } else { 'DarkCyan' }
+			Write-Host "  $marker $($Footnotes[$fi])" -ForegroundColor $fnColor
 		}
 	}
 
@@ -552,8 +554,9 @@ function Write-KatResultSummary {
 		}
 	}
 
-	$footnotes   = [System.Collections.Generic.List[string]]::new()
-	$superscripts = @('¹','²','³','⁴','⁵','⁶','⁷','⁸','⁹')
+	$footnotes      = [System.Collections.Generic.List[string]]::new()
+	$footnoteColors = [System.Collections.Generic.List[string]]::new()
+	$superscripts   = @('¹','²','³','⁴','⁵','⁶','⁷','⁸','⁹')
 
 	$getCellInfo = {
 		param([object]$Result)
@@ -562,20 +565,24 @@ function Write-KatResultSummary {
 		$detail = [string](Get-KatProp $Result 'Detail')
 
 		$addFootnote = {
-			param([string]$Text)
+			param([string]$Text, [string]$Color = 'DarkCyan')
 			$idx = $footnotes.IndexOf($Text)
-			if ($idx -lt 0) { [void]$footnotes.Add($Text); $idx = $footnotes.Count - 1 }
+			if ($idx -lt 0) {
+				[void]$footnotes.Add($Text)
+				[void]$footnoteColors.Add($Color)
+				$idx = $footnotes.Count - 1
+			}
 			return if ($idx -lt $superscripts.Count) { $superscripts[$idx] } else { "[$($idx + 1)]" }
 		}
 
 		switch ($status) {
 			'ok' { return [pscustomobject]@{ Value = 'installed'; Color = $null } }
 			{ $_ -in @('needs-install', 'preview') } {
-				$marker = & $addFootnote $detail
+				$marker = & $addFootnote $detail 'Yellow'
 				return [pscustomobject]@{ Value = "pending$marker"; Color = 'Yellow' }
 			}
 			'blocked' {
-				$marker = & $addFootnote $detail
+				$marker = & $addFootnote $detail 'Red'
 				return [pscustomobject]@{ Value = "blocked$marker"; Color = 'Red' }
 			}
 			default { return [pscustomobject]@{ Value = 'excluded'; Color = 'DarkYellow' } }
@@ -602,7 +609,8 @@ function Write-KatResultSummary {
 		-FixedWidths @($serverColWidth, $statusColWidth, $statusColWidth, $statusColWidth) `
 		-Alignments @('left', 'status', 'status', 'status') `
 		-HeaderAlignments @('left', 'center', 'center', 'center') `
-		-Footnotes $footnotes
+		-Footnotes $footnotes `
+		-FootnoteColors $footnoteColors
 }
 
 function New-KatBootstrapPassThru {

@@ -7,11 +7,8 @@
 		"copilot": [ "shell" ]
 	},
 	"bodyReplacements": {
-		"copilot.vscode": {
-			"{{KAT_QUESTION_TOOL_GUIDANCE}}": "`vscode/askQuestions`"
-		},
-		"copilot.cli": {
-			"{{KAT_QUESTION_TOOL_GUIDANCE}}": "`ask_user`"
+		"copilot": {
+			"{{KAT_QUESTION_TOOL_GUIDANCE}}": "`vscode/askQuestions` in VS Code, or `ask_user` in Copilot CLI"
 		},
 		"claude": {
 			"{{KAT_QUESTION_TOOL_GUIDANCE}}": "`AskUserQuestion`"

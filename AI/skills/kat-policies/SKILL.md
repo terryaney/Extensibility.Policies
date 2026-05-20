@@ -4,21 +4,7 @@ Use the KAT Policies skill to remove all existing 'KAT Managed' files in target 
 
 ## Workflow
 
-1. Check to confirm the Developer Mode status on Windows is enabled.  
-
-```powershell
-Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" -Name "AllowDevelopmentWithoutDevLicense" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty AllowDevelopmentWithoutDevLicense
-```
-
-If value is not 1, prompt user to enable by running the following command in an elevated Terminal/PowerShell, then re-run the workflow after enabling Developer Mode.
-
-```powershell
-Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" -Name "AllowDevelopmentWithoutDevLicense" -Value 1 -Type DWord -Force
-```
-
-Stop processing if Developer Mode is not enabled.
-
-2. Before any step that could otherwise fall back to terminal-sensitive input, determine whether MCP credential collection is actually required for this run.
+1. Before any step that could otherwise fall back to terminal-sensitive input, determine whether MCP credential collection is actually required for this run.
 
 Use the shared MCP configuration in `C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\meta.jsonc` plus the MCP bootstrap helpers' `-CheckOnly -NonInteractive -PassThru` results to decide this.
 
@@ -38,13 +24,13 @@ If a server is not configured to install, or no applicable client needs it, do n
 
 Never rely on `Read-Host` or ask the user to focus the terminal for these values during chat-driven runs.
 
-3. Attempt to do a `git pull` in the `C:\BTR\Extensibility\Policies` folder to get the latest policy files.
+2. Attempt to do a `git pull` in the `C:\BTR\Extensibility\Policies` folder to get the latest policy files.
 
 Before running the pull, tell the user that VS Code may still ask for approval for shell execution or repository-changing actions and that this is a platform/security approval rather than a KAT Policies prompt.
 
 If the pull fails (for example due to merge conflicts or uncommitted changes), output a warning that the latest files were not pulled from the repository and the reason why the pull failed.
 
-4. Execute the following script to synchronize all target locations with the latest KAT Policy files. Use this exact path directly — do not search for the script or substitute a different path.
+3. Execute the following script to synchronize all target locations with the latest KAT Policy files. Use this exact path directly — do not search for the script or substitute a different path.
 
 When the workflow is being run from chat, always pass `-NonInteractive` so the script never falls back to terminal prompting for credentials.
 
@@ -73,7 +59,7 @@ Optional dry run preview for MCP bootstrap checks only (no file writes):
 & "C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\install-github-remote.ps1" -WhatIf -NonInteractive
 ```
 
-5. Try to review the users VS Code User Settings. VS Code's Copilot tries to read AI primitives in the 'Claude' and 'Copilot CLI' folders too, so the following settings should be applied to eliminate duplicates.
+4. Try to review the users VS Code User Settings. VS Code's Copilot tries to read AI primitives in the 'Claude' and 'Copilot CLI' folders too, so the following settings should be applied to eliminate duplicates.
 
 ```json
 	"workbench.browser.openLocalhostLinks": true,

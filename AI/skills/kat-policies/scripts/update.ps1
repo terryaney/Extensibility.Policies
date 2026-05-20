@@ -741,6 +741,12 @@ function Publish-ClaudeDocument {
         $repoTargetedClaudeDocument = -not $targetRoot.Equals($Roots.ClaudeRoot, [StringComparison]::OrdinalIgnoreCase)
         $claudeDocumentSucceeded = Write-ManagedFile -Path $claudeDocumentPath -Content ($claudeDocument -join "`r`n") -ForceOwnedPath $repoTargetedClaudeDocument
         Add-DeploymentRecord -Category 'link' -Id 'CLAUDE.md' -Target 'claudeDoc' -Status $(if ($claudeDocumentSucceeded) { 'ok' } else { 'blocked' }) -Path $claudeDocumentPath -Detail ("imports=" + $instructionIds.Count)
+        if (-not $repoTargetedClaudeDocument) {
+            Add-DeploymentRecord -Category 'instruction' -Id 'Instruction Import Index' -Target 'vscode'                  -Status 'disabled' -MatrixValue 'excluded' -MatrixScoped 'no'
+            Add-DeploymentRecord -Category 'instruction' -Id 'Instruction Import Index' -Target 'copilotCli'              -Status 'disabled' -MatrixValue 'excluded' -MatrixScoped 'no'
+            Add-DeploymentRecord -Category 'instruction' -Id 'Instruction Import Index' -Target 'claudeGlobalInstruction' -Status $(if ($claudeDocumentSucceeded) { 'ok' } else { 'blocked' }) -MatrixValue $(if ($claudeDocumentSucceeded) { 'global' } else { $null }) -MatrixScoped 'no'
+            Add-DeploymentRecord -Category 'instruction' -Id 'Instruction Import Index' -Target 'claudePathInstruction'   -Status 'disabled' -MatrixValue 'excluded' -MatrixScoped 'no'
+        }
     }
 }
 
@@ -839,7 +845,9 @@ function Register-RemovedRecords {
 function Get-FootnoteMarker {
     param(
         [System.Collections.Generic.List[string]]$Footnotes,
-        [string]$Detail
+        [string]$Detail,
+        [System.Collections.Generic.List[string]]$FootnoteColors = $null,
+        [string]$Color = $null
     )
 
     $superscripts = @('¹','²','³','⁴','⁵','⁶','⁷','⁸','⁹')
@@ -849,6 +857,7 @@ function Get-FootnoteMarker {
     }
     else {
         [void]$Footnotes.Add($Detail)
+        if ($null -ne $FootnoteColors) { [void]$FootnoteColors.Add($Color) }
         $num = $Footnotes.Count
     }
 
@@ -858,7 +867,8 @@ function Get-FootnoteMarker {
 function Get-CellDisplayValue {
     param(
         [object]$Record,
-        [System.Collections.Generic.List[string]]$Footnotes
+        [System.Collections.Generic.List[string]]$Footnotes,
+        [System.Collections.Generic.List[string]]$FootnoteColors = $null
     )
 
     if ($null -eq $Record) {
@@ -870,14 +880,14 @@ function Get-CellDisplayValue {
         'disabled' { return 'excluded' }
         'blocked'  {
             if (-not [string]::IsNullOrWhiteSpace([string]$Record.Detail)) {
-                $marker = Get-FootnoteMarker -Footnotes $Footnotes -Detail ([string]$Record.Detail)
+                $marker = Get-FootnoteMarker -Footnotes $Footnotes -Detail ([string]$Record.Detail) -FootnoteColors $FootnoteColors -Color 'Red'
                 return "blocked$marker"
             }
             return 'blocked'
         }
         'skipped'  {
             $detail = if (-not [string]::IsNullOrWhiteSpace([string]$Record.Detail)) { [string]$Record.Detail } else { 'skipped' }
-            $marker = Get-FootnoteMarker -Footnotes $Footnotes -Detail $detail
+            $marker = Get-FootnoteMarker -Footnotes $Footnotes -Detail $detail -FootnoteColors $FootnoteColors -Color 'Red'
             return "blocked$marker"
         }
         'ok'       {
@@ -917,6 +927,7 @@ function Write-McpDeploymentMatrix {
     $displayTargets = @('vscode', 'copilotCli', 'claude')
     $statusColWidth = 12
     $footnotes      = [System.Collections.Generic.List[string]]::new()
+    $footnoteColors = [System.Collections.Generic.List[string]]::new()
 
     $rows = foreach ($group in $groups) {
         $cells      = @($group.Name)
@@ -931,7 +942,7 @@ function Write-McpDeploymentMatrix {
             } else {
                 $detail = [string]$record.Detail
                 if (-not [string]::IsNullOrWhiteSpace($detail)) {
-                    $marker = Get-FootnoteMarker -Footnotes $footnotes -Detail $detail
+                    $marker = Get-FootnoteMarker -Footnotes $footnotes -Detail $detail -FootnoteColors $footnoteColors -Color 'Red'
                     "blocked$marker"
                 } else {
                     'blocked'
@@ -953,7 +964,8 @@ function Write-McpDeploymentMatrix {
         -FixedWidths @($ArtifactWidth, $statusColWidth, $statusColWidth, $statusColWidth) `
         -Alignments @('left', 'status', 'status', 'status') `
         -HeaderAlignments @('left', 'center', 'center', 'center') `
-        -Footnotes $footnotes
+        -Footnotes $footnotes `
+        -FootnoteColors $footnoteColors
 }
 
 function Write-SyncReport {
@@ -972,10 +984,10 @@ function Write-SyncReport {
     $globalArtifactWidth = [Math]::Max('artifact'.Length, [Math]::Max('mcp server'.Length, $globalMaxNameLen) + 3)
 
     Write-McpDeploymentMatrix -ArtifactWidth $globalArtifactWidth
+    Write-ConfigurationLocationsTable
     Write-DeploymentMatrix -ArtifactWidth $globalArtifactWidth
     Write-CompatibilitySummary -ArtifactWidth $globalArtifactWidth
     Write-ArtifactLocationsTable
-    Write-SymbolicLinksTable
 
     if ($blockedPaths.Count -gt 0) {
         Write-Host '--- Manual Cleanup Required ---' -ForegroundColor Red
@@ -1178,9 +1190,11 @@ function Write-DeploymentMatrix {
         $fixedWidths     = @($artifactWidth, $statusColWidth, $statusColWidth, $statusColWidth)
         $alignments      = @('left', 'status', 'status', 'status')
         $headerAligns    = @('left', 'center', 'center', 'center')
-        $tableFootnotes  = [System.Collections.Generic.List[string]]::new()
+        $tableFootnotes      = [System.Collections.Generic.List[string]]::new()
+        $tableFootnoteColors = [System.Collections.Generic.List[string]]::new()
         if (@($records | Where-Object { [string]$_.MatrixValue -eq 'repository' }).Count -gt 0) {
             [void]$tableFootnotes.Add('repository-scoped: see Artifact Locations table for deployment paths')
+            [void]$tableFootnoteColors.Add('DarkCyan')
         }
 
         $rows = foreach ($group in $groups) {
@@ -1197,7 +1211,7 @@ function Write-DeploymentMatrix {
                 else {
                     $record = Select-DisplayRecord -Records @($group.Group | Where-Object Target -eq $displayTarget)
                 }
-                $cells += (Get-CellDisplayValue -Record $record -Footnotes $tableFootnotes)
+                $cells += (Get-CellDisplayValue -Record $record -Footnotes $tableFootnotes -FootnoteColors $tableFootnoteColors)
             }
 
             $rowIsRepoScoped = @($cells | Select-Object -Skip 1 | Where-Object { [string]$_ -eq 'repository' }).Count -gt 0
@@ -1214,7 +1228,7 @@ function Write-DeploymentMatrix {
             [pscustomobject]@{ Cells = $cells; CellColors = $cellColors }
         }
 
-        Write-AsciiTable -Title $categoryLabels[$category] -Headers $displayHeaders -Rows $rows -Color 'Cyan' -FixedWidths $fixedWidths -Alignments $alignments -HeaderAlignments $headerAligns -Footnotes $tableFootnotes
+        Write-AsciiTable -Title $categoryLabels[$category] -Headers $displayHeaders -Rows $rows -Color 'Cyan' -FixedWidths $fixedWidths -Alignments $alignments -HeaderAlignments $headerAligns -Footnotes $tableFootnotes -FootnoteColors $tableFootnoteColors
     }
 	
 	if (-not $hasArtifacts) {
@@ -1329,17 +1343,29 @@ function Write-ArtifactLocationsTable {
         }
     }
 
+    # Instruction Import Index — uses the claudeDoc link record path so it renders with a distinct type label
+    foreach ($record in @($deploymentRecords | Where-Object {
+        $_.Category -eq 'link' -and $_.Target -eq 'claudeDoc' -and $_.Status -eq 'ok' -and -not [string]::IsNullOrWhiteSpace($_.Path)
+    })) {
+        $dir = Split-Path ([string]$record.Path) -Parent
+        $key = "instruction-index|Claude|$dir"
+        if ($seenKeys.Add($key)) {
+            $rows += [pscustomobject]@{ Cells = @('Instruction Index', 'Claude', (Format-ManagedPath -Path $dir)) }
+        }
+    }
+
     if ($rows.Count -eq 0) { return }
 
     $getArtifactRank = {
         param([string]$Label)
         switch ($Label) {
-            'Agent'       { return 0 }
-            'Instruction' { return 1 }
-            'Skill'       { return 2 }
-            'MCP Config'  { return 3 }
+            'Agent'             { return 0 }
+            'Instruction'       { return 1 }
+            'Instruction Index' { return 2 }
+            'Skill'             { return 3 }
+            'MCP Config'        { return 4 }
             default {
-                if ($Label -like '* MCP') { return 4 }
+                if ($Label -like '* MCP') { return 5 }
                 return 99
             }
         }
@@ -1355,25 +1381,69 @@ function Write-ArtifactLocationsTable {
     Write-AsciiTable -Title 'Artifact Locations' -Headers @('artifact type', 'client', 'location') -Rows $sortedRows -Color 'Cyan' -Alignments @('left', 'center', 'left') -HeaderAlignments @('left', 'center', 'left')
 }
 
-function Write-SymbolicLinksTable {
-    $linkRecords = @($deploymentRecords | Where-Object Category -eq 'link')
-    if ($linkRecords.Count -eq 0) { return }
 
-    $tableFootnotes = [System.Collections.Generic.List[string]]::new()
-
-    $rows = foreach ($record in ($linkRecords | Sort-Object Id)) {
-        $displayPath = Format-ManagedPath -Path ([string]$record.Path)
-        $statusValue = Get-CellDisplayValue -Record $record -Footnotes $tableFootnotes
-        if ($statusValue -eq 'global') { $statusValue = 'created' }
-
-        $isRemovedOnly   = $record.Status -eq 'removed'
-        $rowColor        = if ($isRemovedOnly) { 'DarkYellow' } else { $null }
-        $statusCellColor = if ($statusValue -like 'blocked*') { 'Red' } elseif ($statusValue -in @('excluded', 'removed')) { 'DarkYellow' } else { $null }
-
-        [pscustomobject]@{ Cells = @($displayPath, $statusValue); Color = $rowColor; CellColors = @($null, $statusCellColor) }
+function Write-ConfigurationLocationsTable {
+    $linkTargetMap = [ordered]@{
+        'btr'      = '.editorconfig'
+        'terminal' = 'Windows Terminal'
     }
 
-    Write-AsciiTable -Title '--- Symbolic Links Summary ---' -Headers @('location', 'status') -Rows $rows -Color 'Green' -Alignments @('left', 'status') -HeaderAlignments @('left', 'center') -Footnotes $tableFootnotes
+    $footnotes      = [System.Collections.Generic.List[string]]::new()
+    $footnoteColors = [System.Collections.Generic.List[string]]::new()
+    $rows = [System.Collections.Generic.List[object]]::new()
+
+    foreach ($target in $linkTargetMap.Keys) {
+        $typeName = $linkTargetMap[$target]
+        $records = @($deploymentRecords | Where-Object { $_.Category -eq 'link' -and $_.Target -eq $target })
+        if ($records.Count -eq 0) { continue }
+
+        $blockedRecord = $records | Where-Object Status -eq 'blocked' | Select-Object -First 1
+        $skippedRecord = $records | Where-Object Status -eq 'skipped' | Select-Object -First 1
+        $okRecords     = @($records | Where-Object Status -eq 'ok')
+
+        if ($null -ne $blockedRecord) {
+            $detail = [string]$blockedRecord.Detail
+            $displayStatus = if (-not [string]::IsNullOrWhiteSpace($detail)) {
+                "blocked$(Get-FootnoteMarker -Footnotes $footnotes -Detail $detail -FootnoteColors $footnoteColors -Color 'Red')"
+            } else { 'blocked' }
+            $statusColor = 'Red'
+        }
+        elseif ($okRecords.Count -eq 0 -and $null -ne $skippedRecord) {
+            $detail = [string]$skippedRecord.Detail
+            $skipDetail = if (-not [string]::IsNullOrWhiteSpace($detail)) { $detail } else { 'skipped' }
+            $displayStatus = "blocked$(Get-FootnoteMarker -Footnotes $footnotes -Detail $skipDetail -FootnoteColors $footnoteColors -Color 'Red')"
+            $statusColor = 'Red'
+        }
+        else {
+            $displayStatus = 'installed'
+            $statusColor = $null
+        }
+
+        $location = ''
+        if ($okRecords.Count -gt 0) {
+            $firstPath = [string]$okRecords[0].Path
+            if (-not [string]::IsNullOrWhiteSpace($firstPath)) {
+                $location = Format-ManagedPath -Path (Split-Path $firstPath -Parent)
+            }
+        }
+
+        $rows.Add([pscustomobject]@{
+            Cells      = @($typeName, $displayStatus, $location)
+            CellColors = @($null, $statusColor, $null)
+        })
+    }
+
+    if ($rows.Count -eq 0) { return }
+
+    Write-AsciiTable `
+        -Title '--- Configuration Locations ---' `
+        -Headers @('type', 'status', 'location') `
+        -Rows $rows `
+        -Color 'Green' `
+        -Alignments @('left', 'status', 'left') `
+        -HeaderAlignments @('left', 'center', 'left') `
+        -Footnotes $footnotes `
+        -FootnoteColors $footnoteColors
 }
 
 function Write-CompatibilitySummary {
@@ -1436,7 +1506,7 @@ function Write-CompatibilitySummary {
     }
 
     if (@($summaryRows).Count -gt 0) {
-		Write-Host '--- Compatibility Summary ---' -ForegroundColor Yellow
+		Write-Host 'Compatibility Summary' -ForegroundColor Yellow
         Write-AsciiTable -Title '' -Headers @('artifact', 'category') -Rows $summaryRows -Color 'Yellow' -RowDividers $true -FixedWidths @($ArtifactWidth, 0)
     }
 }
