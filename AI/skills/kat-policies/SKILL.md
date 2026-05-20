@@ -22,8 +22,14 @@ Stop processing if Developer Mode is not enabled.
 
 3.  Execute the following script to synchronize all target locations with the latest KAT Policy files. Use this exact path directly — do not search for the script or substitute a different path.
 
+If the user requested detailed or verbose output (e.g. "detailed", "with details", "verbose", "/kat-policies detailed"), pass `-Verbosity Detailed`. Otherwise omit the parameter (defaults to `Normal`).
+
 ```powershell
+# Normal run
 & "C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\update.ps1"
+
+# Detailed run — shows additional diagnostic entries such as repo-scoped artifacts whose target repository does not exist
+& "C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\update.ps1" -Verbosity Detailed
 ```
 
 `update.ps1` automatically runs the remote-only Context7 bootstrap helper when canonical metadata requires Context7 parity. This bootstrap always requires `CONTEXT7_API_KEY` in environment scope (`Process`, `User`, or `Machine`) and fails fast when missing.
