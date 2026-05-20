@@ -70,6 +70,26 @@ function Get-GitHubPatEnvReference {
     return ('${' + $name + '}')
 }
 
+function Test-GitHubAuthorizationUsesEnvReference {
+    param([string]$Authorization)
+
+    return -not [string]::IsNullOrWhiteSpace($Authorization) -and $Authorization -match '\$\{[^}]+\}'
+}
+
+function Test-GitHubAuthorizationAvailable {
+    param([string]$Authorization)
+
+    if ([string]::IsNullOrWhiteSpace($Authorization)) {
+        return $true
+    }
+
+    if (Test-GitHubAuthorizationUsesEnvReference -Authorization $Authorization) {
+        return Test-GitHubPatEnvAvailable
+    }
+
+    return $true
+}
+
 function Show-MissingGitHubPatInstructions {
     param([string]$Reason)
 
@@ -154,14 +174,17 @@ function Set-VsCodeGitHubRemote {
         $existingType = [string](Get-KatProp $existing 'type')
         $existingUrl = Get-GitHubCanonicalUrl ([string](Get-KatProp $existing 'url'))
         $existingHeaders = Get-KatProp $existing 'headers'
+        $existingAuthorization = [string](Get-KatProp $existingHeaders 'Authorization')
         $existingReadonlyHeader = [string](Get-KatProp $existingHeaders 'X-MCP-Readonly')
         $modeTransition = Get-KatModeTransitionLabel -ExistingType $existingType
         $targetUrl = Get-GitHubCanonicalUrl $script:githubUrl
         $isReadOnlyByHeader = Test-KatTruthySettingValue $existingReadonlyHeader
+        $hasUsableAuthorization = Test-GitHubAuthorizationAvailable -Authorization $existingAuthorization
 
         $isCompliant = $existingType -ieq 'http' -and
             $existingUrl -eq $targetUrl -and
-            -not $isReadOnlyByHeader
+            -not $isReadOnlyByHeader -and
+            $hasUsableAuthorization
 
         if ($isCompliant) {
             $authMode = Get-AuthModeDescription -Headers $existingHeaders
@@ -170,6 +193,11 @@ function Set-VsCodeGitHubRemote {
         }
 
         if ($CheckOnly) {
+            if (-not $hasUsableAuthorization) {
+                Add-Result -Client 'vscode' -Status 'blocked' -Method 'env' -Path $configPath -Detail 'Existing GitHub MCP Authorization references a missing PAT environment variable.'
+                return
+            }
+
             Add-Result -Client 'vscode' -Status 'needs-install' -Method 'file' -Path $configPath -Detail "Needs remote GitHub MCP configuration ($modeTransition)."
             return
         }
@@ -184,6 +212,10 @@ function Set-VsCodeGitHubRemote {
             foreach ($property in @($existingHeaders.PSObject.Properties)) {
                 $headerName = [string]$property.Name
                 if ([string]::IsNullOrWhiteSpace($headerName) -or $headerName -ieq 'X-MCP-Readonly') {
+                    continue
+                }
+
+                if ($headerName -ieq 'Authorization' -and -not (Test-GitHubAuthorizationAvailable -Authorization ([string]$property.Value))) {
                     continue
                 }
 
@@ -246,6 +278,7 @@ function Set-CopilotCliGitHubRemote {
         $existingAuthorization = [string](Get-KatProp $existingHeaders 'Authorization')
         $existingReadonlyHeader = [string](Get-KatProp $existingHeaders 'X-MCP-Readonly')
         $existingTools = @((Get-KatProp $existing 'tools'))
+        $hasUsableAuthorization = Test-GitHubAuthorizationAvailable -Authorization $existingAuthorization
 
         $isReadOnlyByUrl = $existingUrl -like '*/readonly/'
         $isReadOnlyByHeader = Test-KatTruthySettingValue $existingReadonlyHeader
@@ -255,7 +288,8 @@ function Set-CopilotCliGitHubRemote {
             $existingUrl -eq $targetUrl -and
             -not $isReadOnlyByUrl -and
             -not $isReadOnlyByHeader -and
-            $hasAllTools
+            $hasAllTools -and
+            $hasUsableAuthorization
 
         if ($isCompliant) {
             $authMode = Get-AuthModeDescription -Headers (Get-KatProp $existing 'headers')
@@ -267,10 +301,13 @@ function Set-CopilotCliGitHubRemote {
         $patReference = Get-GitHubPatEnvReference
 
         if ($CheckOnly) {
-            if ($patAvailable) {
+            if (-not $hasUsableAuthorization -and -not [string]::IsNullOrWhiteSpace($existingAuthorization)) {
+                Add-Result -Client 'copilot-cli' -Status 'blocked' -Method 'env' -Path $configPath -Detail 'Existing GitHub MCP Authorization references a missing PAT environment variable.'
+            }
+            elseif ($patAvailable) {
                 Add-Result -Client 'copilot-cli' -Status 'needs-install' -Method 'file' -Path $configPath -Detail "Needs remote non-readonly GitHub MCP override (github-mcp-server) using PAT reference $patReference."
             }
-            elseif (-not [string]::IsNullOrWhiteSpace($existingAuthorization)) {
+            elseif (-not [string]::IsNullOrWhiteSpace($existingAuthorization) -and $hasUsableAuthorization) {
                 Add-Result -Client 'copilot-cli' -Status 'needs-install' -Method 'file' -Path $configPath -Detail 'Needs remote non-readonly GitHub MCP override (github-mcp-server) while preserving the existing Authorization header.'
             }
             else {
@@ -309,7 +346,7 @@ function Set-CopilotCliGitHubRemote {
         if ($patAvailable) {
             $headerMap['Authorization'] = "Bearer $patReference"
         }
-        elseif (-not [string]::IsNullOrWhiteSpace($existingAuthorization)) {
+        elseif (-not [string]::IsNullOrWhiteSpace($existingAuthorization) -and $hasUsableAuthorization) {
             $headerMap['Authorization'] = $existingAuthorization
         }
 
@@ -328,13 +365,16 @@ function Set-CopilotCliGitHubRemote {
         $previewDetail = if ($patAvailable) {
             "Would configure remote non-readonly GitHub MCP override (github-mcp-server) using PAT reference $patReference."
         }
+        elseif (-not [string]::IsNullOrWhiteSpace($existingAuthorization) -and $hasUsableAuthorization) {
+            'Would configure remote non-readonly GitHub MCP override (github-mcp-server) while preserving the existing Authorization header.'
+        }
         else {
             'Would configure remote non-readonly GitHub MCP override (github-mcp-server) using host OAuth best effort (no PAT header found).'
         }
         $successDetail = if ($patAvailable) {
             "Configured remote non-readonly GitHub MCP override (github-mcp-server) using PAT reference $patReference."
         }
-        elseif (-not [string]::IsNullOrWhiteSpace($existingAuthorization)) {
+        elseif (-not [string]::IsNullOrWhiteSpace($existingAuthorization) -and $hasUsableAuthorization) {
             "Configured remote non-readonly GitHub MCP override (github-mcp-server) while preserving $authMode."
         }
         else {

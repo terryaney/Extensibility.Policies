@@ -95,6 +95,16 @@ function Confirm-Context7ApiKeyAvailable {
     return $true
 }
 
+function Get-Context7BlockedDetail {
+    param([string]$ModeTransition)
+
+    if ([string]::IsNullOrWhiteSpace($ModeTransition)) {
+        return 'CONTEXT7_API_KEY is missing in Process/User/Machine scope.'
+    }
+
+    return "CONTEXT7_API_KEY is missing in Process/User/Machine scope; remote Context7 cannot complete ($ModeTransition)."
+}
+
 function Remove-VsCodeContext7InputDefinition {
     param([object]$Config)
 
@@ -132,10 +142,12 @@ function Set-VsCodeContext7 {
         $existingUrl = [string](Get-KatProp $existing 'url')
         $existingHeader = [string](Get-KatProp (Get-KatProp $existing 'headers') 'CONTEXT7_API_KEY')
         $modeTransition = Get-KatModeTransitionLabel -ExistingType $existingType
+        $credentialAvailable = Test-Context7ApiKeyEnvAvailable
 
-        $isCompliant = $existingType -ieq 'http' -and
+        $matchesTargetConfig = $existingType -ieq 'http' -and
             $existingUrl -eq $script:context7Url -and
             $existingHeader -eq $script:vsCodeEnvReference
+        $isCompliant = $matchesTargetConfig -and $credentialAvailable
 
         if ($isCompliant) {
             Add-Result -Client 'vscode' -Status 'ok' -Method 'file' -Path $configPath -Detail 'Already configured for remote Context7 using environment variable reference.'
@@ -143,7 +155,17 @@ function Set-VsCodeContext7 {
         }
 
         if ($CheckOnly) {
+            if (-not $credentialAvailable) {
+                Add-Result -Client 'vscode' -Status 'blocked' -Method 'env' -Path $configPath -Detail (Get-Context7BlockedDetail -ModeTransition $modeTransition)
+                return
+            }
+
             Add-Result -Client 'vscode' -Status 'needs-install' -Method 'file' -Path $configPath -Detail ("Needs remote Context7 configuration ($modeTransition).")
+            return
+        }
+
+        if (-not $credentialAvailable) {
+            Add-Result -Client 'vscode' -Status 'blocked' -Method 'env' -Path $configPath -Detail (Get-Context7BlockedDetail -ModeTransition $modeTransition)
             return
         }
 
@@ -198,11 +220,13 @@ function Set-CopilotCliContext7 {
         $existingHeader = [string](Get-KatProp (Get-KatProp $existing 'headers') 'CONTEXT7_API_KEY')
         $existingTools = @((Get-KatProp $existing 'tools'))
         $modeTransition = Get-KatModeTransitionLabel -ExistingType $existingType
+        $credentialAvailable = Test-Context7ApiKeyEnvAvailable
 
-        $isCompliant = $existingType -ieq 'http' -and
+        $matchesTargetConfig = $existingType -ieq 'http' -and
             $existingUrl -eq $script:context7Url -and
             $existingHeader -eq $script:sharedEnvReference -and
             ($existingTools -contains '*')
+        $isCompliant = $matchesTargetConfig -and $credentialAvailable
 
         if ($isCompliant) {
             Add-Result -Client 'copilot-cli' -Status 'ok' -Method 'file' -Path $configPath -Detail 'Already configured for remote Context7 using environment variable reference.'
@@ -210,7 +234,17 @@ function Set-CopilotCliContext7 {
         }
 
         if ($CheckOnly) {
+            if (-not $credentialAvailable) {
+                Add-Result -Client 'copilot-cli' -Status 'blocked' -Method 'env' -Path $configPath -Detail (Get-Context7BlockedDetail -ModeTransition $modeTransition)
+                return
+            }
+
             Add-Result -Client 'copilot-cli' -Status 'needs-install' -Method 'file' -Path $configPath -Detail ("Needs remote Context7 configuration ($modeTransition).")
+            return
+        }
+
+        if (-not $credentialAvailable) {
+            Add-Result -Client 'copilot-cli' -Status 'blocked' -Method 'env' -Path $configPath -Detail (Get-Context7BlockedDetail -ModeTransition $modeTransition)
             return
         }
 
@@ -249,10 +283,12 @@ function Set-ClaudeContext7 {
         $existingUrl = [string](Get-KatProp $existing 'url')
         $existingHeader = [string](Get-KatProp (Get-KatProp $existing 'headers') 'CONTEXT7_API_KEY')
         $modeTransition = Get-KatModeTransitionLabel -ExistingType $existingType
+        $credentialAvailable = Test-Context7ApiKeyEnvAvailable
 
-        $isCompliant = $existingType -ieq 'http' -and
+        $matchesTargetConfig = $existingType -ieq 'http' -and
             $existingUrl -eq $script:context7Url -and
             $existingHeader -eq $script:sharedEnvReference
+        $isCompliant = $matchesTargetConfig -and $credentialAvailable
 
         if ($isCompliant) {
             Add-Result -Client 'claude' -Status 'ok' -Method 'file' -Path $configPath -Detail 'Already configured for remote Context7 using environment variable reference.'
@@ -260,7 +296,17 @@ function Set-ClaudeContext7 {
         }
 
         if ($CheckOnly) {
+            if (-not $credentialAvailable) {
+                Add-Result -Client 'claude' -Status 'blocked' -Method 'env' -Path $configPath -Detail (Get-Context7BlockedDetail -ModeTransition $modeTransition)
+                return
+            }
+
             Add-Result -Client 'claude' -Status 'needs-install' -Method 'file' -Path $configPath -Detail ("Needs remote Context7 configuration ($modeTransition).")
+            return
+        }
+
+        if (-not $credentialAvailable) {
+            Add-Result -Client 'claude' -Status 'blocked' -Method 'env' -Path $configPath -Detail (Get-Context7BlockedDetail -ModeTransition $modeTransition)
             return
         }
 
@@ -278,15 +324,9 @@ function Set-ClaudeContext7 {
 
 $apiKeyReady = Confirm-Context7ApiKeyAvailable
 
-if ($apiKeyReady) {
-    Set-VsCodeContext7
-    Set-CopilotCliContext7
-    Set-ClaudeContext7
-} else {
-    if (-not $SkipVsCode)     { Add-Result -Client 'vscode'      -Status 'blocked' -Method 'env' -Path '-' -Detail 'CONTEXT7_API_KEY is not set.' }
-    if (-not $SkipCopilotCli) { Add-Result -Client 'copilot-cli' -Status 'blocked' -Method 'env' -Path '-' -Detail 'CONTEXT7_API_KEY is not set.' }
-    if (-not $SkipClaude)     { Add-Result -Client 'claude'      -Status 'blocked' -Method 'env' -Path '-' -Detail 'CONTEXT7_API_KEY is not set.' }
-}
+Set-VsCodeContext7
+Set-CopilotCliContext7
+Set-ClaudeContext7
 if (-not $PassThru) {
     Write-KatResultSummary -ServerName 'Context7' -Results @($script:results.ToArray())
 }

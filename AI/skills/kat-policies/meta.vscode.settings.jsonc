@@ -1,0 +1,21 @@
+{
+	"settings": {
+		"workbench.browser.openLocalhostLinks": true,
+		"workbench.browser.enableChatTools": true,
+		"chat.agentFilesLocations": {
+			".claude/agents": false,
+			"~/.claude/agents": false,
+			"~/.copilot/agents": false
+		},
+		"chat.agentSkillsLocations": {
+			".claude/skills": false,
+			"~/.claude/skills": false
+		},
+		"chat.instructionsFilesLocations": {
+			".claude/rules": false,
+			"~/.claude/rules": false,
+			"~/.copilot/instructions": false,
+			"~/AppData/Roaming/Code/User/instructions": true
+		}
+	}
+}

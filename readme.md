@@ -13,17 +13,17 @@ Because these configuration files are either hard coded locations or only discov
 1. Clone repository to your local machine:
   `git clone https://tfs.acsgs.com/tfs/PDSI/HRS2/_git/HRS%20BTR%20-%20extensibility.policies C:\BTR\Extensibility\Policies`
 1. Run the following command in Terminal:
-  `C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\update.ps1`
+  `C:\BTR\Extensibility\Policies\scripts\update.ps1`
 
-If KAT Policies agent metadata requires Context7 MCP Server, `update.ps1` automatically runs `AI\skills\kat-policies\scripts\install-context7-remote.ps1`. The helper always requires `CONTEXT7_API_KEY` and fails fast when it is missing. Set `CONTEXT7_API_KEY` first:
+If KAT Policies agent metadata requires Context7 MCP Server, `update.ps1` automatically runs `scripts\install-context7-remote.ps1`. The helper always requires `CONTEXT7_API_KEY` and fails fast when it is missing. Set `CONTEXT7_API_KEY` first:
 
 `[Environment]::SetEnvironmentVariable("CONTEXT7_API_KEY", "<your-key>", "User")`
 
 Optional preview without file writes:
 
-`C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\install-context7-remote.ps1 -WhatIf`
+`C:\BTR\Extensibility\Policies\scripts\install-context7-remote.ps1 -WhatIf`
 
-If KAT Policies agent metadata requires GitHub tools (`github/*`), `update.ps1` automatically runs `AI\skills\kat-policies\scripts\install-github-remote.ps1`. The helper enforces remote GitHub MCP where possible: VS Code is set to `https://api.githubcopilot.com/mcp/`, Copilot CLI is configured to a non-readonly remote override (`github-mcp-server`) with PAT auth when available or host OAuth best effort when PAT is missing, and Claude is configured remote-first while preserving an existing local fallback when PAT auth is unavailable.
+If KAT Policies agent metadata requires GitHub tools (`github/*`), `update.ps1` automatically runs `scripts\install-github-remote.ps1`. The helper enforces remote GitHub MCP where possible: VS Code is set to `https://api.githubcopilot.com/mcp/`, Copilot CLI is configured to a non-readonly remote override (`github-mcp-server`) with PAT auth when available or host OAuth best effort when PAT is missing, and Claude is configured remote-first while preserving an existing local fallback when PAT auth is unavailable.
 
 When GitHub PAT variables are missing, the helper prints PAT setup instructions, explicitly warns that auth is still required, and tells the user to set `GITHUB_TOKEN` in User scope.
 
@@ -31,13 +31,13 @@ Copilot CLI and Claude artifacts are only created when those clients are detecte
 
 Optional preview without file writes:
 
-`C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\install-github-remote.ps1 -WhatIf`
+`C:\BTR\Extensibility\Policies\scripts\install-github-remote.ps1 -WhatIf`
 
-If KAT Policies agent metadata requires KatLedger MCP Server (`kat/ledger/*`), `update.ps1` automatically runs `AI\skills\kat-policies\scripts\install-katledger.ps1`. The helper downloads the configured GitHub release asset from `terryaney/Mcp.KatLedger` into `%USERPROFILE%\.kat\KatLedger\`, points client MCP configs at `%USERPROFILE%\.kat\KatLedger\KatLedger.exe`, and keeps the DB at `%USERPROFILE%\.kat\KatLedger\KatLedger.db`.
+If KAT Policies agent metadata requires KatLedger MCP Server (`kat/ledger/*`), `update.ps1` automatically runs `scripts\install-katledger.ps1`. The helper downloads the configured GitHub release asset from `terryaney/Mcp.KatLedger` into `%USERPROFILE%\.kat\KatLedger\`, points client MCP configs at `%USERPROFILE%\.kat\KatLedger\KatLedger.exe`, and keeps the DB at `%USERPROFILE%\.kat\KatLedger\KatLedger.db`.
 
 Optional preview without file writes:
 
-`C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\install-katledger.ps1 -WhatIf`
+`C:\BTR\Extensibility\Policies\scripts\install-katledger.ps1 -WhatIf`
 
 Once you've installed this once, the `kat-policies` skill will be available in your Copilot and Claude chats.  Simply ask to "update KAT policies" and the agent will pull the latest files and run the script automatically.
 
@@ -53,7 +53,7 @@ Once you've installed this once, the `kat-policies` skill will be available in y
 
 ## AI Layout
 
-Canonical AI content lives under `/AI` and is authored once, then rendered into client-specific formats by `AI/skills/kat-policies/scripts/update.ps1`.
+Canonical AI content lives under `/AI` and is authored once, then rendered into client-specific formats by `scripts/update.ps1`.
 
 ### Canonical Source Tree
 
@@ -73,9 +73,14 @@ Canonical AI content lives under `/AI` and is authored once, then rendered into 
       SKILL.md
       meta.jsonc
       commands/
-      scripts/
       references/
       templates/
+/scripts/
+  update.ps1
+  install-context7-remote.ps1
+  install-github-remote.ps1
+  install-katledger.ps1
+  Kat.Policy.Mcp.psm1
 ```
 
 ### Agents
@@ -84,7 +89,7 @@ Each canonical agent lives in a folder somewhere under `/AI/agents/`.
 
 - `body.md` is the shared prompt body.
 - `meta.jsonc` uses the shared metadata shape plus canonical `agents.*` fields such as `agents.model`, `agents.tools`, `agents.userInvocable`, `agents.subAgents`, and `agents.handoffs`.
-- `agents.model` is the VS Code Copilot model display name. Copilot CLI and Claude output map from that canonical value through `AI\skills\kat-policies\scripts\meta.mappings.jsonc`.
+- `agents.model` is the VS Code Copilot model display name. Copilot CLI and Claude output map from that canonical value through `AI\skills\kat-policies\meta.jsonc`.
 - Canonical metadata is VS Code Copilot-centric. Claude output is rendered from the same canonical fields instead of being authored as a separate source format.
 - Grouping folders are allowed. Policy sync walks `AI\agents` recursively and treats the first folder containing both `body.md` and `meta.jsonc` (or `meta.json`) as the canonical agent directory.
 - Published agent naming still comes from `meta.jsonc.id` (with the existing leaf-folder fallback when `id` is omitted), so source nesting does not change the generated output filename.
@@ -134,7 +139,7 @@ The renderer is trying to accomplish four things:
 
 ### Supported Process
 
-`AI/skills/kat-policies/scripts/update.ps1` currently supports this workflow:
+`scripts/update.ps1` currently supports this workflow:
 
 1. Discover the install roots for VS Code, Copilot CLI, Claude, and Windows Terminal.
 1. Scan known managed roots and remove only KAT-managed files and directories before republishing.
@@ -147,6 +152,10 @@ The renderer is trying to accomplish four things:
 1. Print a deployment matrix plus compatibility summary after each run.
 1. When Context7 is requested by canonical agent tool metadata, invoke the remote Context7 bootstrap helper to ensure VS Code, Copilot CLI, and Claude Context7 MCP entries are set to remote HTTP (converting existing local `stdio` entries where present).
 1. When GitHub tools are requested by canonical agent tool metadata, invoke the GitHub bootstrap helper to enforce remote GitHub MCP where possible (VS Code + Copilot CLI non-readonly override) and configure Claude remote-first with local Docker fallback when PAT-based remote auth is unavailable.
+
+### Tool Confirmation Notes
+
+KAT Policies can write settings that reduce duplicate context noise and lower approval friction, but it should not force a global default permission mode for every chat. The supported approval levers are workspace trust, the chat session permission level, `chat.permissions.default`, and per-tool approvals in the chat UI. The managed VS Code safeguard payload keeps the duplicate-context settings plus tool-enablement settings such as `workbench.browser.enableChatTools` and `workbench.browser.openLocalhostLinks`, but it no longer sets `chat.permissions.default` in user settings. If you want a repo-specific default, set it in that repository's `.vscode/settings.json` after confirming your VS Code build honors that setting at workspace scope. Some shell, file-write, or repository-changing actions can still prompt because of platform or product security policy.
 
 ### Ownership And Cleanup Model
 
@@ -165,7 +174,7 @@ The cleanup rules matter because the renderer is intentionally conservative.
 
 Use one shared shape across all `meta.jsonc` files. Put the common properties first, then add artifact-specific prefixed sections so applicability is obvious.
 
-The target schema also includes a shared mappings file at `AI/skills/kat-policies/scripts/meta.mappings.jsonc`. Keep that file high-level and reusable: it is where shared client translations and renderer mappings live so individual artifact metadata can stay focused on canonical intent.
+The target schema also includes shared mappings and MCP metadata in `AI/skills/kat-policies/meta.jsonc`. Keep those sections high-level and reusable so individual artifact metadata can stay focused on canonical intent.
 
 | Field | Type | Applies To | Notes |
 |------|------|------|------|
@@ -177,8 +186,8 @@ The target schema also includes a shared mappings file at `AI/skills/kat-policie
 | `enabled.copilot.cli` | bool | agents, instructions, skills | Optional. Publishes only the Copilot CLI output when `enabled.copilot` is `false` or absent. Ignored when `enabled.copilot` is `true`. Defaults to `false` when `enabled.copilot` is explicitly `false`; otherwise inherits the `enabled.copilot` default. |
 | `enabled.claude` | bool | agents, instructions, skills | Publishes Claude outputs for that artifact. Defaults to `true`. |
 | `enabled.repositories` | string[] | agents, instructions, skills | Optional repo-local publish roots. When omitted, publishing is user-level only. |
-| `agents.model` | string | agents | Canonical VS Code Copilot model display name. Copilot CLI and Claude output map from this value through `AI\skills\kat-policies\scripts\meta.mappings.jsonc`. |
-| `agents.tools` | string[] | agents | Canonical tool array. Shared client translations belong in `meta.mappings.jsonc`; keep artifact metadata focused on canonical tool intent. |
+| `agents.model` | string | agents | Canonical VS Code Copilot model display name. Copilot CLI and Claude output map from this value through `AI\skills\kat-policies\meta.jsonc`. |
+| `agents.tools` | string[] | agents | Canonical tool array. Shared client translations belong in `AI\skills\kat-policies\meta.jsonc`; keep artifact metadata focused on canonical tool intent. |
 | `agents.userInvocable` | bool | agents | Canonical user-invocable flag for Copilot agent rendering. Claude agent output has no direct equivalent. |
 | `agents.subAgents` | array | agents | Canonical subagent/orchestration list for Copilot-aware agent composition. Unsupported clients omit it. |
 | `agents.handoffs` | object[] | agents | Canonical handoff metadata for orchestrator-style agents. Unsupported clients omit it. |
@@ -262,7 +271,7 @@ If a canonical skill has a `commands/*.md` folder, Copilot publishing also gener
 
 - `meta.jsonc` remains the canonical metadata format across agents, instructions, and skills.
 - Canonical metadata is VS Code Copilot-centric. Client-specific differences should be derived by the renderer instead of duplicated across artifact docs.
-- `AI/skills/kat-policies/scripts/meta.mappings.jsonc` is the shared place for reusable client translations and mappings, including how canonical `agents.model` values are rendered for Copilot CLI and Claude.
+- `AI/skills/kat-policies/meta.jsonc` is the shared place for reusable client translations, MCP settings, and mappings, including how canonical `agents.model` values are rendered for Copilot CLI and Claude.
 - Repo-local publishing is controlled by `enabled.repositories`.
 - Instructions use `instructions.scope` instead of split Claude-specific enable flags. Omitted scope and empty scope both mean global. Non-empty scope means path-scoped output.
 - Agents should use canonical schema fields `agents.model`, `agents.tools`, `agents.userInvocable`, `agents.subAgents`, and `agents.handoffs`.
@@ -295,7 +304,7 @@ Claude has a different artifact model from Copilot.
 
 The renderer keeps tool mapping centralized instead of repeating client-specific details in every artifact.
 
-- Shared client translations belong in `AI/skills/kat-policies/scripts/meta.mappings.jsonc`.
+- Shared client translations belong in `AI/skills/kat-policies/meta.jsonc`.
 - Individual artifact metadata should stay canonical and only carry local overrides when the shared mappings are not enough.
 - When Claude parity is impossible, the script leaves a compatibility note rather than silently pretending the clients are equivalent.
 

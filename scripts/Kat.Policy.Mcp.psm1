@@ -29,72 +29,62 @@ function Test-KatDryRun {
 	return [bool]$WhatIfPreference
 }
 
+function Initialize-KatJsonNative {
+	if ('KatJsonNative' -as [type]) {
+		return
+	}
+
+	Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.Text;
+using System.Text.Json;
+
+public static class KatJsonNative
+{
+    public static string NormalizeJsonC(string content)
+    {
+        if (content is null)
+        {
+            throw new ArgumentNullException(nameof(content));
+        }
+
+        var options = new JsonDocumentOptions
+        {
+            CommentHandling = JsonCommentHandling.Skip,
+            AllowTrailingCommas = true
+        };
+
+        using var document = JsonDocument.Parse(content, options);
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            document.RootElement.WriteTo(writer);
+        }
+
+        return Encoding.UTF8.GetString(stream.ToArray());
+    }
+}
+'@
+}
+
+function ConvertTo-KatNormalizedJsonText {
+	param([string]$Content)
+
+	Initialize-KatJsonNative
+	return [KatJsonNative]::NormalizeJsonC($Content)
+}
+
 function ConvertFrom-KatJsonWithComments {
 	param([string]$Content)
 
-	$builder = New-Object System.Text.StringBuilder
-	$inString = $false
-	$isEscaped = $false
-	$inLineComment = $false
-	$inBlockComment = $false
+	return ConvertFrom-Json (ConvertTo-KatNormalizedJsonText -Content $Content)
+}
 
-	for ($index = 0; $index -lt $Content.Length; $index++) {
-		$character = $Content[$index]
-		$nextCharacter = if ($index + 1 -lt $Content.Length) { $Content[$index + 1] } else { [char]0 }
+function ConvertFrom-KatJsonWithCommentsAsHashtable {
+	param([string]$Content)
 
-		if ($inLineComment) {
-			if ($character -eq "`r" -or $character -eq "`n") {
-				$inLineComment = $false
-				[void]$builder.Append($character)
-			}
-			continue
-		}
-
-		if ($inBlockComment) {
-			if ($character -eq '*' -and $nextCharacter -eq '/') {
-				$inBlockComment = $false
-				$index++
-			}
-			continue
-		}
-
-		if ($inString) {
-			[void]$builder.Append($character)
-			if ($isEscaped) {
-				$isEscaped = $false
-				continue
-			}
-
-			if ($character -eq '\\') {
-				$isEscaped = $true
-				continue
-			}
-
-			if ($character -eq '"') {
-				$inString = $false
-			}
-			continue
-		}
-
-		if ($character -eq '/' -and $nextCharacter -eq '/') {
-			$inLineComment = $true
-			$index++
-			continue
-		}
-
-		if ($character -eq '/' -and $nextCharacter -eq '*') {
-			$inBlockComment = $true
-			$index++
-			continue
-		}
-
-		[void]$builder.Append($character)
-		if ($character -eq '"') {
-			$inString = $true
-		}
-	}
-
-	return ConvertFrom-Json $builder.ToString()
+	return ConvertFrom-Json (ConvertTo-KatNormalizedJsonText -Content $Content) -AsHashtable
 }
 
 function Read-KatJsonDocument {
@@ -637,6 +627,7 @@ Export-ModuleMember -Function @(
 	'Add-KatResult',
 	'Complete-KatFileMutation',
 	'ConvertFrom-KatJsonWithComments',
+	'ConvertFrom-KatJsonWithCommentsAsHashtable',
 	'Get-KatModeTransitionLabel',
 	'Get-KatProp',
 	'Get-OrAddKatObjectProperty',

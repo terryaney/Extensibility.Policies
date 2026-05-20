@@ -3,9 +3,6 @@
 	"name": "kat-policies",
 	"description": "Update all the AI features (commands, skills, agents, etc.) for Claude and Copilot when a user asks to update KAT Policies (or Policy files).",
 	"context": "fork",
-	"allowedTools": {
-		"copilot": [ "shell" ]
-	},
 	"bodyReplacements": {
 		"copilot": {
 			"{{KAT_QUESTION_TOOL_GUIDANCE}}": "`vscode/askQuestions` in VS Code, or `ask_user` in Copilot CLI"
@@ -17,5 +14,87 @@
 	"enabled": {
 		"copilot": true,
 		"claude": true
+	},
+	"mappings": {
+		"models": {
+			"GPT-5.4 (copilot)": {
+				"copilotCli": "gpt-5.4",
+				"claude": "sonnet"
+			},
+			"GPT-5.3-Codex (copilot)": {
+				"copilotCli": "gpt-5.3-codex",
+				"claude": "sonnet"
+			},
+			"Gemini 3 Pro (Preview) (copilot)": {
+				"copilotCli": "gemini-3-pro-preview",
+				"claude": "sonnet"
+			}
+		},
+		"tools": {
+			"agent": {
+				"claude": "Agent"
+			},
+			"edit": {
+				"claude": [ "Edit", "Write" ]
+			},
+			"execute": {
+				"claude": "Bash"
+			},
+			"github/*": {
+				"claude": [ "Bash", "WebFetch" ]
+			},
+			"kat/ledger/*": {
+				"copilotCli": false
+			},
+			"io.github.upstash/context7/*": {
+				"claude": [ "mcp__context7__resolve-library-id", "mcp__context7__get-library-docs" ]
+			},
+			"read": {
+				"claude": "Read"
+			},
+			"read/*": {
+				"claude": "Read"
+			},
+			"read/problems": {
+				"copilotCli": "ide-get_diagnostics"
+			},
+			"search": {
+				"claude": [ "Grep", "Glob" ]
+			},
+			"todo": {
+				"claude": "TodoWrite"
+			},
+			"vscode": {
+				"claude": [ "AskUserQuestion", "persistent:user", "ToolSearch" ],
+				"copilotCli": [ "ask_user", "memory" ]
+			},
+			"vscode/askQuestions": {
+				"claude": "AskUserQuestion",
+				"copilotCli": "ask_user"
+			},
+			"vscode/memory": {
+				"claude": "persistent:user",
+				"copilotCli": "memory"
+			},
+			"web": {
+				"claude": "WebFetch"
+			},
+			"web/*": {
+				"claude": "WebFetch"
+			}
+		}
+	},
+	"mcp": {
+		"context7": {
+			"copilot": true,
+			"claude": true
+		},
+		"github": {
+			"copilot": true,
+			"claude": true
+		},
+		"katledger": {
+			"copilot.vscode": true
+		}
 	}
 }
