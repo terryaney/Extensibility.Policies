@@ -1,6 +1,7 @@
 param(
     [ValidateSet('Normal', 'Detailed')]
-    [string]$Verbosity = 'Normal'
+    [string]$Verbosity = 'Normal',
+    [switch]$NonInteractive
 )
 
 Set-StrictMode -Version Latest
@@ -1066,6 +1067,7 @@ function Invoke-McpBootstrap {
     if (-not (Test-McpClientEnabled -McpConfig $McpConfig -Client 'vscode')) { $skipParams['SkipVsCode'] = $true }
     if (-not (Test-McpClientEnabled -McpConfig $McpConfig -Client 'cli'))    { $skipParams['SkipCopilotCli'] = $true }
     if (-not (Test-McpClientEnabled -McpConfig $McpConfig -Client 'claude')) { $skipParams['SkipClaude'] = $true }
+    if ($NonInteractive) { $skipParams['NonInteractive'] = $true }
 
     $checkResult = & $helperScriptPath @skipParams -CheckOnly -PassThru
 
@@ -1559,6 +1561,26 @@ function Resolve-BodyReplacements {
     }
 
     return $resolved
+}
+
+function Get-ConfiguredSkillAllowedTools {
+    param(
+        [object]$Meta,
+        [ValidateSet('copilot', 'claude')]
+        [string]$Client
+    )
+
+    $allowedTools = Get-Prop $Meta 'allowedTools'
+    if ($null -eq $allowedTools) {
+        return @()
+    }
+
+    $clientProperty = $allowedTools.PSObject.Properties[$Client]
+    if ($null -ne $clientProperty) {
+        return @(ConvertTo-StringArray $clientProperty.Value)
+    }
+
+    return @(ConvertTo-StringArray $allowedTools)
 }
 
 function ConvertTo-StringArray {
@@ -2256,6 +2278,7 @@ function New-CopilotSkillDefinition {
         Directory = $SkillDefinition.Directory
         Meta = $SkillDefinition.Meta
         Body = $body
+        AllowedTools = @(Get-ConfiguredSkillAllowedTools -Meta $SkillDefinition.Meta -Client 'copilot')
         Enabled = $SkillDefinition.Enabled
         Id = $SkillDefinition.Id
         ClaudeMeta = $SkillDefinition.ClaudeMeta
@@ -2273,6 +2296,7 @@ function New-ClaudeSkillDefinition {
         Directory = $SkillDefinition.Directory
         Meta = $SkillDefinition.Meta
         Body = $body
+        AllowedTools = @(Get-ConfiguredSkillAllowedTools -Meta $SkillDefinition.Meta -Client 'claude')
         Enabled = $SkillDefinition.Enabled
         Id = $SkillDefinition.Id
         ClaudeMeta = $SkillDefinition.ClaudeMeta
@@ -2471,7 +2495,8 @@ function ConvertTo-ClaudeRuleDocument {
 function ConvertTo-SkillDocument {
     param(
         [object]$Meta,
-        [string]$Body
+        [string]$Body,
+        [string[]]$AllowedTools = @()
     )
 
     $frontmatter = New-Object System.Collections.Generic.List[string]
@@ -2480,6 +2505,13 @@ function ConvertTo-SkillDocument {
         if (-not [string]::IsNullOrWhiteSpace([string]$value)) {
             $frontmatter.Add($field + ': ' + (Format-YamlScalar $value))
         }
+    }
+
+    if ($AllowedTools.Count -eq 1) {
+        $frontmatter.Add('allowed-tools: ' + (Format-YamlScalar $AllowedTools[0]))
+    }
+    elseif ($AllowedTools.Count -gt 1) {
+        $frontmatter.Add('allowed-tools: ' + (Format-YamlInlineArray $AllowedTools))
     }
 
     # $metadata = Get-Prop $Meta 'metadata'
@@ -2694,7 +2726,7 @@ function Install-RenderedSkill {
         return $false
     }
 
-    $renderedSkill = ConvertTo-SkillDocument -Meta $SkillDefinition.Meta -Body $SkillDefinition.Body
+    $renderedSkill = ConvertTo-SkillDocument -Meta $SkillDefinition.Meta -Body $SkillDefinition.Body -AllowedTools @(ConvertTo-StringArray (Get-Prop $SkillDefinition 'AllowedTools'))
     $allSucceeded = Write-ManagedFile -Path (Join-Path $targetDirectory 'SKILL.md') -Content $renderedSkill
 
     $excludedItemNames = @('SKILL.md', 'meta.json', 'meta.jsonc')

@@ -178,7 +178,20 @@ function Test-KatTruthySettingValue {
 }
 
 function Test-KatInteractiveHost {
-	return [Environment]::UserInteractive -and $Host.Name -ne 'ServerRemoteHost'
+	if (-not [Environment]::UserInteractive) {
+		return $false
+	}
+
+	if ($Host.Name -notin @('ConsoleHost', 'Visual Studio Code Host', 'Windows PowerShell ISE Host')) {
+		return $false
+	}
+
+	try {
+		return -not [Console]::IsInputRedirected
+	}
+	catch {
+		return $false
+	}
 }
 
 function Test-KatClaudeVsCodeExtensionInstalled {

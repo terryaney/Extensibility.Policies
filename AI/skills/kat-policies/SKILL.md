@@ -18,18 +18,44 @@ Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModel
 
 Stop processing if Developer Mode is not enabled.
 
-2.  Attempt to do a `git pull` in the `C:\BTR\Extensibility\Policies` folder to get the latest policy files.  If this fails (e.g., due to merge conflicts, uncommitted changes, etc.), output a warning that the latest files were not pulled from the repository and the reason why the pull failed.
+2. Before any step that could otherwise fall back to terminal-sensitive input, determine whether MCP credential collection is actually required for this run.
 
-3.  Execute the following script to synchronize all target locations with the latest KAT Policy files. Use this exact path directly — do not search for the script or substitute a different path.
+Use the shared MCP configuration in `C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\meta.jsonc` plus the MCP bootstrap helpers' `-CheckOnly -NonInteractive -PassThru` results to decide this.
+
+Only collect `CONTEXT7_API_KEY` in chat when **all** of the following are true:
+- shared MCP metadata requests Context7 parity for at least one client
+- at least one targeted client actually needs Context7 setup for this run
+- the helper check indicates Context7 is blocked by a missing environment value rather than already compliant or `no-client`
+
+Only collect a GitHub PAT in chat when **all** of the following are true:
+- shared MCP metadata requests GitHub parity for at least one client
+- at least one targeted client actually needs GitHub MCP setup for this run
+- the helper check indicates GitHub setup is blocked by missing auth rather than already compliant or `no-client`
+
+When collection is required, use {{KAT_QUESTION_TOOL_GUIDANCE}} to collect the value in chat, then save it into `User` and current `Process` scope before continuing.
+
+If a server is not configured to install, or no applicable client needs it, do not ask for its credential.
+
+Never rely on `Read-Host` or ask the user to focus the terminal for these values during chat-driven runs.
+
+3. Attempt to do a `git pull` in the `C:\BTR\Extensibility\Policies` folder to get the latest policy files.
+
+Before running the pull, tell the user that VS Code may still ask for approval for shell execution or repository-changing actions and that this is a platform/security approval rather than a KAT Policies prompt.
+
+If the pull fails (for example due to merge conflicts or uncommitted changes), output a warning that the latest files were not pulled from the repository and the reason why the pull failed.
+
+4. Execute the following script to synchronize all target locations with the latest KAT Policy files. Use this exact path directly — do not search for the script or substitute a different path.
+
+When the workflow is being run from chat, always pass `-NonInteractive` so the script never falls back to terminal prompting for credentials.
 
 If the user requested detailed or verbose output (e.g. "detailed", "with details", "verbose", "/kat-policies detailed"), pass `-Verbosity Detailed`. Otherwise omit the parameter (defaults to `Normal`).
 
 ```powershell
-# Normal run
-& "C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\update.ps1"
+# Normal run from chat
+& "C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\update.ps1" -NonInteractive
 
-# Detailed run — shows additional diagnostic entries such as repo-scoped artifacts whose target repository does not exist
-& "C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\update.ps1" -Verbosity Detailed
+# Detailed run from chat — shows additional diagnostic entries such as repo-scoped artifacts whose target repository does not exist
+& "C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\update.ps1" -NonInteractive -Verbosity Detailed
 ```
 
 `update.ps1` automatically runs the remote-only Context7 bootstrap helper when canonical metadata requires Context7 parity. This bootstrap always requires `CONTEXT7_API_KEY` in environment scope (`Process`, `User`, or `Machine`) and fails fast when missing.
@@ -43,11 +69,11 @@ Copilot CLI and Claude artifacts are created only when those clients are detecte
 Optional dry run preview for MCP bootstrap checks only (no file writes):
 
 ```powershell
-& "C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\install-context7-remote.ps1" -WhatIf
-& "C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\install-github-remote.ps1" -WhatIf
+& "C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\install-context7-remote.ps1" -WhatIf -NonInteractive
+& "C:\BTR\Extensibility\Policies\AI\skills\kat-policies\scripts\install-github-remote.ps1" -WhatIf -NonInteractive
 ```
 
-4. Try to review the users VS Code User Settings.  VS Code's Copilot tries to read AI primitives in the 'Claude' and 'Copilot CLI' folders too, so the following settings should be applied to eliminate duplicates.
+5. Try to review the users VS Code User Settings. VS Code's Copilot tries to read AI primitives in the 'Claude' and 'Copilot CLI' folders too, so the following settings should be applied to eliminate duplicates.
 
 ```json
 	"workbench.browser.openLocalhostLinks": true,
@@ -70,3 +96,23 @@ Optional dry run preview for MCP bootstrap checks only (no file writes):
 ```
 
 If you are able to confirm these settings do not match, prompt the user if they want you to apply them automatically explaining that VS Code Copilot Chat extension will show duplicate Agents and also send duplicated context instructions if not set.  If they do not want them set, just tell them exactly what settings should be set to eliminate problems.
+
+## Final Response Format
+
+Do not end with vague bullets such as “AI artifacts installed.”
+
+Instead, produce:
+
+1. A short workflow status table with columns similar to:
+   - Step
+   - Status
+   - Details
+
+2. An artifact/location table derived from the script output with columns similar to:
+   - Artifact Type
+   - Client
+   - Location
+
+3. If something was skipped, blocked, or unchanged, say exactly what and why.
+
+4. If approvals were required, note whether they were platform approvals (for example shell execution / file write approval) rather than KAT Policies asking for terminal input.

@@ -4,6 +4,7 @@ param(
     [switch]$SkipCopilotCli,
     [switch]$SkipClaude,
     [switch]$CheckOnly,
+    [switch]$NonInteractive,
     [switch]$PassThru
 )
 
@@ -94,7 +95,7 @@ function Confirm-GitHubPatAvailable {
         return $true
     }
 
-    if ($CheckOnly -or -not (Test-KatInteractiveHost)) {
+    if ($CheckOnly -or $NonInteractive -or -not (Test-KatInteractiveHost)) {
         return $false
     }
 

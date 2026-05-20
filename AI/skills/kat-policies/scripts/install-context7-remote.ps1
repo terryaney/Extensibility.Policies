@@ -4,6 +4,7 @@ param(
     [switch]$SkipCopilotCli,
     [switch]$SkipClaude,
     [switch]$CheckOnly,
+    [switch]$NonInteractive,
     [switch]$PassThru
 )
 
@@ -60,6 +61,11 @@ function Confirm-Context7ApiKeyAvailable {
 
     if ($CheckOnly) {
         Add-Result -Client 'environment' -Status 'blocked' -Method 'env' -Path '-' -Detail 'CONTEXT7_API_KEY is missing in Process/User/Machine scope.'
+        return $false
+    }
+
+    if ($NonInteractive) {
+        Add-Result -Client 'environment' -Status 'blocked' -Method 'env' -Path '-' -Detail 'CONTEXT7_API_KEY is missing and -NonInteractive was specified.'
         return $false
     }
 
