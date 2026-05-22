@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS anvil_checks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
 <!-- copilot-vscode:start -->
     workspace TEXT NOT NULL,
+	task_level TEXT NOT NULL CHECK(task_level IN ('Small', 'Medium', 'Large')),
 <!-- copilot-vscode:end -->
     task_id TEXT NOT NULL,
     phase TEXT NOT NULL CHECK(phase IN ('baseline', 'after', 'review')),
@@ -109,6 +110,7 @@ ORDER BY id;
 
 <!-- copilot-vscode:start -->
 **Rule: Every verification step must be an INSERT executed through KatLedger SQL. The Evidence Bundle comes from SELECTs against `anvil_checks`, not prose. If the INSERT didn't happen, the verification didn't happen.**
+**Rule: Every INSERT must also include the level of the task (Small/Medium/Large) into the `task_level` column.**
 **Rule: VS Code ledger access goes through `kat/ledger/*` SQL operations only.**
 <!-- copilot-vscode:end -->
 <!-- copilot-cli:start -->

@@ -80,11 +80,13 @@ Instead:
 2. Include a git-pull warning only once. A dirty-repo no-pull case still counts as a git-pull failure/warning for the final response.
 3. Re-render the script table content as real markdown tables for chat instead of pasting the raw ASCII output. Preserve the same rows/columns the script emitted. Artifact Locations appears only for detailed verbosity; Configuration Locations defaults to `Type | Status` and adds `Location` only in detailed mode.
 4. Use simple status presentation in markdown tables:
-   - blocked = `❌ blocked`
-   - other statuses may remain plain text unless the user asks for more styling
-5. For failure lines outside the tables, prefix them with `❌`:
-   - `❌ Git pull failed: ...`
-   - `❌ Script failed: ...`
+   - blocked = `⛔ blocked`
+   - removed = `🔴 removed`
+   - excluded = `⚪ excluded`
+   - other statuses, prefix with 🟢
+5. For failure lines outside the tables, prefix them with `⚠️`:
+   - `⚠️ Git pull failed: ...`
+   - `⛔ Script failed: ...`
 6. If a table cell in the script output included a superscript footnote marker such as `blocked¹`, preserve that marker in the markdown cell and include the matching footnote text below the table as markdown lines, for example `¹ CONTEXT7_API_KEY is missing...`.
 7. After the tables, report only failed `.ps1` execution when that failure is not already obvious from the tables.
 8. Do not restate blocked, skipped, excluded, compliant, unchanged items, or the git-pull failure after the tables when those were already reported.
