@@ -209,15 +209,12 @@ function Test-KatClaudeVsCodeExtensionInstalled {
 }
 
 function Test-KatClaudeInstalled {
-	$claudeConfigPath = Join-Path $env:USERPROFILE '.claude.json'
 	return (Test-KatCommandAvailable -Name 'claude') -or
-		(Test-Path -LiteralPath $claudeConfigPath) -or
-		(Test-Path -LiteralPath (Join-Path $env:USERPROFILE '.claude')) -or
 		(Test-KatClaudeVsCodeExtensionInstalled)
 }
 
 function Test-KatCopilotCliInstalled {
-	return (Test-KatCommandAvailable -Name 'copilot') -or (Test-Path -LiteralPath (Join-Path $env:USERPROFILE '.copilot'))
+	return Test-KatCommandAvailable -Name 'copilot'
 }
 
 function Test-KatVsCodeInstalled {

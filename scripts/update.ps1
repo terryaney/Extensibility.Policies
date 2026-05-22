@@ -1843,9 +1843,11 @@ function Test-CopilotSubClientEnabled {
 function Test-UserAllowed {
     param([object]$Meta)
 
-    $allowed = @(Get-Prop $Meta 'applyForUsers')
-    if ($allowed.Count -eq 0) { return $true }
-    return $allowed -contains $env:USERNAME
+    $allowed = Get-Prop $Meta 'applyForUsers'
+    if ($null -eq $allowed) { return $true }
+    $allowedArr = @($allowed)
+    if ($allowedArr.Count -eq 0) { return $true }
+    return $allowedArr -contains $env:USERNAME
 }
 
 function Resolve-BodyReplacements {

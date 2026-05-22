@@ -258,8 +258,7 @@ function Set-CopilotCliGitHubRemote {
     }
 
     $copilotRoot = Join-Path $env:USERPROFILE '.copilot'
-    $copilotInstalled = (Test-KatCommandAvailable -Name 'copilot') -or (Test-Path -LiteralPath $copilotRoot)
-    if (-not $copilotInstalled) {
+    if (-not (Test-KatCopilotCliInstalled)) {
         Add-Result -Client 'copilot-cli' -Status 'no-client' -Method 'none' -Path '-' -Detail 'Copilot CLI is not installed; no client artifacts were created.'
         return
     }
