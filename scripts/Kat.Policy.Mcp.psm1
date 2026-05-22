@@ -216,6 +216,14 @@ function Test-KatClaudeInstalled {
 		(Test-KatClaudeVsCodeExtensionInstalled)
 }
 
+function Test-KatCopilotCliInstalled {
+	return (Test-KatCommandAvailable -Name 'copilot') -or (Test-Path -LiteralPath (Join-Path $env:USERPROFILE '.copilot'))
+}
+
+function Test-KatVsCodeInstalled {
+	return (Test-KatCommandAvailable -Name 'code') -or (Test-Path -LiteralPath (Join-Path $env:APPDATA 'Code\User'))
+}
+
 function New-KatResultList {
 	return ,(New-Object System.Collections.Generic.List[object])
 }
@@ -638,6 +646,8 @@ Export-ModuleMember -Function @(
 	'Test-KatClaudeInstalled',
 	'Test-KatClaudeVsCodeExtensionInstalled',
 	'Test-KatCommandAvailable',
+	'Test-KatCopilotCliInstalled',
+	'Test-KatVsCodeInstalled',
 	'Test-KatDryRun',
 	'Test-KatInteractiveHost',
 	'Test-KatTruthySettingValue',

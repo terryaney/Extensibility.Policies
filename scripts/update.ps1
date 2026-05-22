@@ -23,6 +23,7 @@ $preSyncManagedPaths = New-Object System.Collections.Generic.List[string]
 $script:claudeContext7Configured = $null
 $script:sharedMeta = $null
 $script:vsCodeSettingsMeta = $null
+$script:clientInstalled = $null
 
 function Add-Warning {
     param([string]$Message)
@@ -506,6 +507,7 @@ function Publish-Agents {
             $publishTargets = New-Object System.Collections.Generic.List[string]
             $succeeded = $true
             $repoMissing = $false
+            $missingRepoPaths = [System.Collections.Generic.List[string]]::new()
 
             if ($agentRepositories.Count -eq 0) {
                 $path = Join-Path (Join-Path $Roots.VscodeRoot 'prompts') ($id + '.agent.md')
@@ -517,6 +519,7 @@ function Publish-Agents {
                     if (-not (Test-Path -LiteralPath $agentRepositoryRoot -PathType Container)) {
                         $succeeded = $false
                         $repoMissing = $true
+                        $missingRepoPaths.Add($agentRepositoryRoot)
                         continue
                     }
 
@@ -527,9 +530,7 @@ function Publish-Agents {
             }
 
             $deploymentPath = if ($publishTargets.Count -gt 0) { $publishTargets -join '; ' } elseif ($agentRepositories.Count -gt 0) { $agentRepositories -join '; ' } else { $null }
-            if (-not $repoMissing -or $Verbosity -eq 'Detailed') {
-                Add-DeploymentRecord -Category 'agent' -Id $id -Target 'vscode' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $deploymentPath -Detail $(if ($repoMissing) { 'scoped repository does not exist' } elseif ($agentRepositories.Count -gt 1) { "paths=$($publishTargets.Count)" } else { $null }) -MatrixValue $(if ($succeeded) { $agentMatrixValue } else { $null })
-            }
+            Add-DeploymentRecord -Category 'agent' -Id $id -Target 'vscode' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $deploymentPath -Detail $(if ($repoMissing) { "destination '$($missingRepoPaths -join '; ')' does not exist" } elseif ($agentRepositories.Count -gt 1) { "paths=$($publishTargets.Count)" } else { $null }) -MatrixValue $(if ($succeeded) { $agentMatrixValue } else { $null })
         }
         else {
             Add-DeploymentRecord -Category 'agent' -Id $id -Target 'vscode' -Status 'disabled' -MatrixValue 'excluded'
@@ -544,9 +545,7 @@ function Publish-Agents {
             }
             else {
                 # Repo-scoped: copilotCli reads .github/agents/ — covered by the vscode deployment above
-                if (-not $repoMissing -or $Verbosity -eq 'Detailed') {
-                    Add-DeploymentRecord -Category 'agent' -Id $id -Target 'copilotCli' -Status $(if ($repoMissing) { 'blocked' } else { 'ok' }) -MatrixValue $(if ($repoMissing) { $null } else { 'repository' }) -Detail $(if ($repoMissing) { 'scoped repository does not exist' } else { $null })
-                }
+                Add-DeploymentRecord -Category 'agent' -Id $id -Target 'copilotCli' -Status $(if ($repoMissing) { 'blocked' } else { 'ok' }) -MatrixValue $(if ($repoMissing) { $null } else { 'repository' }) -Detail $(if ($repoMissing) { "destination '$($missingRepoPaths -join '; ')' does not exist" } else { $null })
             }
         }
         else {
@@ -563,6 +562,7 @@ function Publish-Agents {
             $publishTargets = New-Object System.Collections.Generic.List[string]
             $succeeded = $true
             $repoMissing = $false
+            $missingRepoPaths = [System.Collections.Generic.List[string]]::new()
 
             if ($agentRepositories.Count -eq 0) {
                 $path = Join-Path (Join-Path $Roots.ClaudeRoot 'agents') ($id + '.md')
@@ -574,6 +574,7 @@ function Publish-Agents {
                     if (-not (Test-Path -LiteralPath $agentRepositoryRoot -PathType Container)) {
                         $succeeded = $false
                         $repoMissing = $true
+                        $missingRepoPaths.Add($agentRepositoryRoot)
                         continue
                     }
 
@@ -584,9 +585,7 @@ function Publish-Agents {
             }
 
             $deploymentPath = if ($publishTargets.Count -gt 0) { $publishTargets -join '; ' } elseif ($agentRepositories.Count -gt 0) { $agentRepositories -join '; ' } else { $null }
-            if (-not $repoMissing -or $Verbosity -eq 'Detailed') {
-                Add-DeploymentRecord -Category 'agent' -Id $id -Target 'claude' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $deploymentPath -Detail $(if ($repoMissing) { 'scoped repository does not exist' } elseif ($agentRepositories.Count -gt 1) { "paths=$($publishTargets.Count)" } else { $null }) -MatrixValue $(if ($succeeded) { $agentMatrixValue } else { $null })
-            }
+            Add-DeploymentRecord -Category 'agent' -Id $id -Target 'claude' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $deploymentPath -Detail $(if ($repoMissing) { "destination '$($missingRepoPaths -join '; ')' does not exist" } elseif ($agentRepositories.Count -gt 1) { "paths=$($publishTargets.Count)" } else { $null }) -MatrixValue $(if ($succeeded) { $agentMatrixValue } else { $null })
         }
         else {
             Add-DeploymentRecord -Category 'agent' -Id $id -Target 'claude' -Status 'disabled' -MatrixValue 'excluded'
@@ -617,6 +616,7 @@ function Publish-Instructions {
             $publishTargets = New-Object System.Collections.Generic.List[string]
             $succeeded = $true
             $repoMissing = $false
+            $missingRepoPaths = [System.Collections.Generic.List[string]]::new()
 
             if ($instructionRepositories.Count -eq 0) {
                 $path = Join-Path (Join-Path $Roots.VscodeRoot 'instructions') ($id + '.instructions.md')
@@ -628,6 +628,7 @@ function Publish-Instructions {
                     if (-not (Test-Path -LiteralPath $instructionRepositoryRoot -PathType Container)) {
                         $succeeded = $false
                         $repoMissing = $true
+                        $missingRepoPaths.Add($instructionRepositoryRoot)
                         continue
                     }
 
@@ -638,9 +639,7 @@ function Publish-Instructions {
             }
 
             $deploymentPath = if ($publishTargets.Count -gt 0) { $publishTargets -join '; ' } elseif ($instructionRepositories.Count -gt 0) { $instructionRepositories -join '; ' } else { $null }
-            if (-not $repoMissing -or $Verbosity -eq 'Detailed') {
-                Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'vscode' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $deploymentPath -Detail $(if ($repoMissing) { 'scoped repository does not exist' } elseif ($instructionRepositories.Count -gt 1) { "paths=$($publishTargets.Count)" } else { $null }) -MatrixValue $instructionMatrixValue -MatrixScoped $instructionScopedValue
-            }
+            Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'vscode' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $deploymentPath -Detail $(if ($repoMissing) { "destination '$($missingRepoPaths -join '; ')' does not exist" } elseif ($instructionRepositories.Count -gt 1) { "paths=$($publishTargets.Count)" } else { $null }) -MatrixValue $instructionMatrixValue -MatrixScoped $instructionScopedValue
         }
         else {
             Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'vscode' -Status 'disabled' -MatrixValue 'excluded' -MatrixScoped $instructionScopedValue
@@ -649,9 +648,7 @@ function Publish-Instructions {
         if (Test-CopilotSubClientEnabled -Enabled $enabled -SubClient 'cli') {
             if ($instructionRepositories.Count -gt 0) {
                 # Repo-scoped: copilotCli reads .github/instructions/ — covered by the vscode deployment above
-                if (-not $repoMissing -or $Verbosity -eq 'Detailed') {
-                    Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'copilotCli' -Status $(if ($repoMissing) { 'blocked' } else { 'ok' }) -MatrixValue $(if ($repoMissing) { $null } else { 'repository' }) -Detail $(if ($repoMissing) { 'scoped repository does not exist' } else { $null }) -MatrixScoped $instructionScopedValue
-                }
+                Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'copilotCli' -Status $(if ($repoMissing) { 'blocked' } else { 'ok' }) -MatrixValue $(if ($repoMissing) { $null } else { 'repository' }) -Detail $(if ($repoMissing) { "destination '$($missingRepoPaths -join '; ')' does not exist" } else { $null }) -MatrixScoped $instructionScopedValue
             }
             else {
                 $path = Join-Path (Join-Path $Roots.CopilotRoot 'instructions') ($id + '.instructions.md')
@@ -668,6 +665,7 @@ function Publish-Instructions {
             $publishTargets = New-Object System.Collections.Generic.List[string]
             $succeeded = $true
             $repoMissing = $false
+            $missingRepoPaths = [System.Collections.Generic.List[string]]::new()
 
             if ($instructionRepositories.Count -eq 0) {
                 if ($isClaudeGlobalInstruction) {
@@ -695,6 +693,7 @@ function Publish-Instructions {
                     if (-not (Test-Path -LiteralPath $instructionRepositoryRoot -PathType Container)) {
                         $succeeded = $false
                         $repoMissing = $true
+                        $missingRepoPaths.Add($instructionRepositoryRoot)
                         continue
                     }
 
@@ -724,9 +723,7 @@ function Publish-Instructions {
 
             $targetName = if ($isClaudeGlobalInstruction) { 'claudeGlobalInstruction' } else { 'claudePathInstruction' }
             $deploymentPath = if ($publishTargets.Count -gt 0) { $publishTargets -join '; ' } elseif ($instructionRepositories.Count -gt 0) { $instructionRepositories -join '; ' } else { $null }
-            if (-not $repoMissing -or $Verbosity -eq 'Detailed') {
-                Add-DeploymentRecord -Category 'instruction' -Id $id -Target $targetName -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $deploymentPath -Detail $(if ($repoMissing) { 'scoped repository does not exist' } elseif ($instructionRepositories.Count -gt 1) { "paths=$($publishTargets.Count)" } else { $null }) -MatrixValue $instructionMatrixValue -MatrixScoped $instructionScopedValue
-            }
+            Add-DeploymentRecord -Category 'instruction' -Id $id -Target $targetName -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $deploymentPath -Detail $(if ($repoMissing) { "destination '$($missingRepoPaths -join '; ')' does not exist" } elseif ($instructionRepositories.Count -gt 1) { "paths=$($publishTargets.Count)" } else { $null }) -MatrixValue $instructionMatrixValue -MatrixScoped $instructionScopedValue
             Add-DeploymentRecord -Category 'instruction' -Id $id -Target $(if ($isClaudeGlobalInstruction) { 'claudePathInstruction' } else { 'claudeGlobalInstruction' }) -Status 'disabled' -MatrixValue 'excluded' -MatrixScoped $instructionScopedValue
         }
         else {
@@ -757,6 +754,7 @@ function Publish-Skills {
             $publishTargets = New-Object System.Collections.Generic.List[string]
             $succeeded = $true
             $repoMissing = $false
+            $missingRepoPaths = [System.Collections.Generic.List[string]]::new()
 
             $copilotRoots = if ($skillRepositories.Count -eq 0) {
                 @($Roots.CopilotRoot)
@@ -769,6 +767,7 @@ function Publish-Skills {
                 if ($skillRepositories.Count -gt 0 -and -not (Test-Path -LiteralPath (Split-Path $copilotRoot -Parent) -PathType Container)) {
                     $repoMissing = $true
                     $succeeded = $false
+                    $missingRepoPaths.Add((Split-Path $copilotRoot -Parent))
                     continue
                 }
 
@@ -809,9 +808,7 @@ function Publish-Skills {
             }
 
             $deploymentPath = if ($publishTargets.Count -gt 0) { $publishTargets -join '; ' } else { $null }
-            if (-not $repoMissing -or $Verbosity -eq 'Detailed') {
-                Add-DeploymentRecord -Category 'skill' -Id $id -Target 'copilot' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $deploymentPath -Detail $(if ($repoMissing) { 'scoped repository does not exist' } elseif ($skillRepositories.Count -gt 1) { "paths=$($publishTargets.Count)" } else { $null }) -MatrixValue $(if ($succeeded) { $skillMatrixValue } else { $null })
-            }
+            Add-DeploymentRecord -Category 'skill' -Id $id -Target 'copilot' -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) -Path $deploymentPath -Detail $(if ($repoMissing) { "destination '$($missingRepoPaths -join '; ')' does not exist" } elseif ($skillRepositories.Count -gt 1) { "paths=$($publishTargets.Count)" } else { $null }) -MatrixValue $(if ($succeeded) { $skillMatrixValue } else { $null })
         }
         else {
             Add-DeploymentRecord -Category 'skill' -Id $id -Target 'copilot' -Status 'disabled' -MatrixValue 'excluded'
@@ -823,6 +820,7 @@ function Publish-Skills {
             $publishTargets = New-Object System.Collections.Generic.List[string]
             $skillSucceeded = $true
             $repoMissing = $false
+            $missingRepoPaths = [System.Collections.Generic.List[string]]::new()
 
             $claudeRoots = if ($skillRepositories.Count -eq 0) {
                 @($Roots.ClaudeRoot)
@@ -835,6 +833,7 @@ function Publish-Skills {
                 if ($skillRepositories.Count -gt 0 -and -not (Test-Path -LiteralPath (Split-Path $claudeRoot -Parent) -PathType Container)) {
                     $repoMissing = $true
                     $skillSucceeded = $false
+                    $missingRepoPaths.Add((Split-Path $claudeRoot -Parent))
                     continue
                 }
 
@@ -868,9 +867,7 @@ function Publish-Skills {
 
             $claudeSucceeded = $skillSucceeded -and $commandsSucceeded
             $deploymentPath = if ($publishTargets.Count -gt 0) { $publishTargets -join '; ' } else { $null }
-            if (-not $repoMissing -or $Verbosity -eq 'Detailed') {
-                Add-DeploymentRecord -Category 'skill' -Id $id -Target 'claude' -Status $(if ($claudeSucceeded) { 'ok' } else { 'blocked' }) -Path $deploymentPath -Detail $(if ($repoMissing) { 'scoped repository does not exist' } elseif ($claudeSucceeded) { $(if ($skillRepositories.Count -gt 1) { "paths=$($publishTargets.Count)" } else { $null }) } elseif (-not $skillSucceeded) { 'skill-publish-failed' } else { 'command-publish-failed' }) -MatrixValue $(if ($claudeSucceeded) { $skillMatrixValue } else { $null })
-            }
+            Add-DeploymentRecord -Category 'skill' -Id $id -Target 'claude' -Status $(if ($claudeSucceeded) { 'ok' } else { 'blocked' }) -Path $deploymentPath -Detail $(if ($repoMissing) { "destination '$($missingRepoPaths -join '; ')' does not exist" } elseif ($claudeSucceeded) { $(if ($skillRepositories.Count -gt 1) { "paths=$($publishTargets.Count)" } else { $null }) } elseif (-not $skillSucceeded) { 'skill-publish-failed' } else { 'command-publish-failed' }) -MatrixValue $(if ($claudeSucceeded) { $skillMatrixValue } else { $null })
         }
         else {
             Add-DeploymentRecord -Category 'skill' -Id $id -Target 'claude' -Status 'disabled' -MatrixValue 'excluded'
@@ -1281,6 +1278,12 @@ function Invoke-McpBootstrap {
 }
 
 function Invoke-PolicySync {
+    $script:clientInstalled = @{
+        vscode     = Test-KatVsCodeInstalled
+        copilotCli = Test-KatCopilotCliInstalled
+        claude     = Test-KatClaudeInstalled
+    }
+
     $roots = Get-EnvironmentRoots
     $agentDefinitions = Get-AgentDefinitions
     $instructionDefinitions = Get-InstructionDefinitions
@@ -1336,9 +1339,14 @@ function Write-DeploymentMatrix {
         skill       = 'Skills'
     }
 
-    $displayTargets  = @('vscode', 'copilotCli', 'claude')
-    $displayHeaders  = @('artifact', 'vscode', 'cli', 'claude')
     $statusColWidth  = 12
+    $activeTargetDefs = @(
+        if ($null -eq $script:clientInstalled -or $script:clientInstalled.vscode)     { [pscustomobject]@{ Target = 'vscode';     Header = 'vscode' } }
+        if ($null -eq $script:clientInstalled -or $script:clientInstalled.copilotCli) { [pscustomobject]@{ Target = 'copilotCli'; Header = 'cli'    } }
+        if ($null -eq $script:clientInstalled -or $script:clientInstalled.claude)     { [pscustomobject]@{ Target = 'claude';     Header = 'claude' } }
+    )
+    $displayTargets = @($activeTargetDefs | ForEach-Object { $_.Target })
+    $displayHeaders = @('artifact') + @($activeTargetDefs | ForEach-Object { $_.Header })
 
     function Get-InstructionRecord {
         param([object[]]$Records, [string]$Target)
@@ -1372,9 +1380,9 @@ function Write-DeploymentMatrix {
 
         $groups          = $records | Group-Object Id | Sort-Object Name
         $artifactWidth   = $ArtifactWidth
-        $fixedWidths     = @($artifactWidth, $statusColWidth, $statusColWidth, $statusColWidth)
-        $alignments      = @('left', 'status', 'status', 'status')
-        $headerAligns    = @('left', 'center', 'center', 'center')
+        $fixedWidths     = @($artifactWidth) + @($activeTargetDefs | ForEach-Object { $statusColWidth })
+        $alignments      = @('left') + @($activeTargetDefs | ForEach-Object { 'status' })
+        $headerAligns    = @('left') + @($activeTargetDefs | ForEach-Object { 'center' })
         $tableFootnotes      = [System.Collections.Generic.List[string]]::new()
         $tableFootnoteColors = [System.Collections.Generic.List[string]]::new()
         if (@($records | Where-Object { [string]$_.MatrixValue -eq 'repository' }).Count -gt 0) {
@@ -1664,7 +1672,19 @@ function Write-ConfigurationLocationsTable {
 function Write-CompatibilitySummary {
 	param([int]$ArtifactWidth)
 
-	if ($compatibilityMessages.Count -eq 0) {
+    $notInstalledRows = @(
+        if ($null -ne $script:clientInstalled -and -not $script:clientInstalled.claude) {
+            [pscustomobject]@{ Cells = @('claude primitives', 'Claude Code not installed. All primitives skipped.') }
+        }
+        if ($null -ne $script:clientInstalled -and -not $script:clientInstalled.copilotCli) {
+            [pscustomobject]@{ Cells = @('copilot cli primitives', 'Copilot CLI not installed. All primitives skipped.') }
+        }
+        if ($null -ne $script:clientInstalled -and -not $script:clientInstalled.vscode) {
+            [pscustomobject]@{ Cells = @('vscode primitives', 'GitHub Copilot (VS Code) not installed. All primitives skipped.') }
+        }
+    )
+
+    if ($compatibilityMessages.Count -eq 0 -and $notInstalledRows.Count -eq 0) {
         return
     }
 
@@ -1703,7 +1723,7 @@ function Write-CompatibilitySummary {
         }
     }
 
-    $summaryRows = @(
+    $rollupRows = @(
         foreach ($label in $rollups.Keys) {
         $items = @($rollups[$label])
         if ($items.Count -eq 0) {
@@ -1717,10 +1737,12 @@ function Write-CompatibilitySummary {
     )
 
     if ($otherMessages.Count -gt 0) {
-        $summaryRows += [pscustomobject]@{
+        $rollupRows += [pscustomobject]@{
             Cells = @((($otherMessages | Sort-Object -Unique) -join "`n"), "Other ($($otherMessages.Count))")
         }
     }
+
+    $summaryRows = @($notInstalledRows) + $rollupRows
 
     if (@($summaryRows).Count -gt 0) {
 		Write-Host 'Compatibility Summary' -ForegroundColor Yellow
@@ -1816,6 +1838,14 @@ function Test-CopilotSubClientEnabled {
         return ConvertTo-BoolValue $subProp $false
     }
     return $true
+}
+
+function Test-UserAllowed {
+    param([object]$Meta)
+
+    $allowed = @(Get-Prop $Meta 'applyForUsers')
+    if ($allowed.Count -eq 0) { return $true }
+    return $allowed -contains $env:USERNAME
 }
 
 function Resolve-BodyReplacements {
@@ -2917,6 +2947,7 @@ function Get-SkillMeta {
 function Get-AgentDefinitions {
     foreach ($agentDir in Get-AgentDirectories) {
         $meta = Read-CanonicalMeta -Path (Get-CanonicalMetaPath -Directory $agentDir)
+        if (-not (Test-UserAllowed -Meta $meta)) { continue }
 
         [pscustomobject]@{
             Directory = $agentDir
@@ -2933,6 +2964,7 @@ function Get-AgentDefinitions {
 function Get-InstructionDefinitions {
     foreach ($instructionDir in Get-InstructionDirectories) {
         $meta = Read-CanonicalMeta -Path (Get-CanonicalMetaPath -Directory $instructionDir)
+        if (-not (Test-UserAllowed -Meta $meta)) { continue }
 
         [pscustomobject]@{
             Directory = $instructionDir
@@ -2948,6 +2980,7 @@ function Get-InstructionDefinitions {
 function Get-SkillDefinitionsWithContent {
     foreach ($skillDir in Get-SkillDirectories) {
         $meta = Get-SkillMeta -Directory $skillDir
+        if (-not (Test-UserAllowed -Meta $meta)) { continue }
         $commandsDir = Join-Path $skillDir.FullName 'commands'
         $commandFiles = @()
         if (Test-Path -LiteralPath $commandsDir) {

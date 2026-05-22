@@ -119,6 +119,12 @@ function Confirm-GitHubPatAvailable {
         return $false
     }
 
+    $claudeNeedsPat     = -not $SkipClaude -and (Test-KatClaudeInstalled)
+    $copilotCliNeedsPat = -not $SkipCopilotCli -and (Test-KatCopilotCliInstalled)
+    if (-not $claudeNeedsPat -and -not $copilotCliNeedsPat) {
+        return $false
+    }
+
     Show-MissingGitHubPatInstructions -Reason 'A PAT is required for Claude remote GitHub MCP and recommended for Copilot CLI.'
 
     # Key is captured masked and never written to stdout or returned to any caller.
