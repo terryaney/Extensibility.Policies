@@ -1098,8 +1098,13 @@ function Write-McpDeploymentMatrix {
     if ($mcpRecords.Count -eq 0) { return }
 
     $groups         = $mcpRecords | Group-Object Id | Sort-Object Name
-    $displayTargets = @('vscode', 'copilotCli', 'claude')
     $statusColWidth = 12
+    $mcpActiveTargetDefs = @(
+        if ($null -eq $script:clientInstalled -or $script:clientInstalled.vscode)     { [pscustomobject]@{ Target = 'vscode';     Header = 'vscode' } }
+        if ($null -eq $script:clientInstalled -or $script:clientInstalled.copilotCli) { [pscustomobject]@{ Target = 'copilotCli'; Header = 'cli'    } }
+        if ($null -eq $script:clientInstalled -or $script:clientInstalled.claude)     { [pscustomobject]@{ Target = 'claude';     Header = 'claude' } }
+    )
+    $mcpDisplayTargets = @($mcpActiveTargetDefs | ForEach-Object { $_.Target })
     $footnotes      = [System.Collections.Generic.List[string]]::new()
     $footnoteColors = [System.Collections.Generic.List[string]]::new()
 
@@ -1107,7 +1112,7 @@ function Write-McpDeploymentMatrix {
         $cells      = @($group.Name)
         $cellColors = @($null)
 
-        foreach ($target in $displayTargets) {
+        foreach ($target in $mcpDisplayTargets) {
             $record = $group.Group | Where-Object Target -eq $target | Select-Object -First 1
             $displayValue = if ($null -eq $record) {
                 'excluded'
@@ -1127,17 +1132,19 @@ function Write-McpDeploymentMatrix {
             $cellColors += if ($displayValue -like 'blocked*') { 'Red' } elseif ($displayValue -eq 'excluded') { 'DarkYellow' } else { $null }
         }
 
+        if ($cells.Count -gt 1 -and -not @($cells[1..($cells.Count - 1)] | Where-Object { [string]$_ -ne 'excluded' })) { continue }
+
         [pscustomobject]@{ Cells = $cells; CellColors = $cellColors }
     }
 
     Write-AsciiTable `
         -Title '--- MCP Server Deployment Status ---' `
-        -Headers @('mcp server', 'vscode', 'cli', 'claude') `
+        -Headers (@('mcp server') + @($mcpActiveTargetDefs | ForEach-Object { $_.Header })) `
         -Rows $rows `
         -Color 'Green' `
-        -FixedWidths @($ArtifactWidth, $statusColWidth, $statusColWidth, $statusColWidth) `
-        -Alignments @('left', 'status', 'status', 'status') `
-        -HeaderAlignments @('left', 'center', 'center', 'center') `
+        -FixedWidths (@($ArtifactWidth) + @($mcpActiveTargetDefs | ForEach-Object { $statusColWidth })) `
+        -Alignments (@('left') + @($mcpActiveTargetDefs | ForEach-Object { 'status' })) `
+        -HeaderAlignments (@('left') + @($mcpActiveTargetDefs | ForEach-Object { 'center' })) `
         -Footnotes $footnotes `
         -FootnoteColors $footnoteColors
 }
@@ -1233,6 +1240,12 @@ function Write-BootstrapNoClientWarnings {
             $client = 'unknown client'
         }
 
+        $isAlreadyCovered = $null -ne $script:clientInstalled -and (
+            ($client -ieq 'claude'      -and -not $script:clientInstalled.claude) -or
+            ($client -ieq 'copilot-cli' -and -not $script:clientInstalled.copilotCli)
+        )
+        if ($isAlreadyCovered) { continue }
+
         Add-Warning "$ProductName MCP setup: skipped $client because no client installation was detected."
     }
 }
@@ -1305,7 +1318,9 @@ function Invoke-PolicySync {
     Publish-Agents -Roots $roots -Definitions $agentDefinitions
     $instructionPublishResult = Publish-Instructions -Roots $roots -Definitions $instructionDefinitions
     Publish-Skills -Roots $roots -Definitions $skillDefinitions
-    Publish-ClaudeDocument -Roots $roots -InstructionPublishResult $instructionPublishResult -Definitions $instructionDefinitions
+    if ($null -eq $script:clientInstalled -or $script:clientInstalled.claude) {
+        Publish-ClaudeDocument -Roots $roots -InstructionPublishResult $instructionPublishResult -Definitions $instructionDefinitions
+    }
     Sync-VsCodeSettingsSafeguards
     try {
         if (Test-McpParityRequested -ServerKey 'context7') {
@@ -1406,6 +1421,8 @@ function Write-DeploymentMatrix {
                 }
                 $cells += (Get-CellDisplayValue -Record $record -Footnotes $tableFootnotes -FootnoteColors $tableFootnoteColors)
             }
+
+            if ($cells.Count -gt 1 -and -not @($cells[1..($cells.Count - 1)] | Where-Object { [string]$_ -ne 'excluded' })) { continue }
 
             $rowIsRepoScoped = @($cells | Select-Object -Skip 1 | Where-Object { [string]$_ -eq 'repository' }).Count -gt 0
             if ($rowIsRepoScoped) {
