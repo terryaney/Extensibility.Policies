@@ -8,6 +8,6 @@
 		"repositories": "C:\\BTR\\Camelot\\Websites\\ESS\\Nexgen"
 	},
 	"instructions": {
-		"scope": [ "**/*.ts", "**/*.js", "**/*.kaml" ]
+		"scope": [ "**/*.cs", "**/*.ts", "**/*.js", "**/*.kaml" ]
 	}
 }
