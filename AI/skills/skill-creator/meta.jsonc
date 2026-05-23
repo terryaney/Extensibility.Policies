@@ -1,0 +1,22 @@
+{
+	"id": "skill-creator",
+	"name": "skill-creator",
+	"description": "Create new skills and improve skill behavior across Claude and Copilot. Use when users want to create a skill from scratch, port an external skill into this repository, evaluate skill behavior, or refine a skill description for better triggering.",
+	"license": "Complete terms in LICENSE.txt",
+	"compatibility": "Core authoring guidance works in Claude and Copilot. The bundled Python automation still requires Python.",
+	"context": "fork",
+	"metadata": {
+		"author": "anthropics",
+		"repository": "https://github.com/anthropics/skills",
+		"commit": "690f15c"
+	},
+	"enabled": {
+		"copilot": false,
+		"claude": false
+	},
+	"skills": {
+		"excludeItems": {
+			"copilot": [ "agents", "assets", "eval-viewer", "scripts" ]
+		}
+	}
+}

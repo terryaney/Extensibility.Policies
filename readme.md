@@ -196,6 +196,7 @@ The target schema also includes shared mappings and MCP metadata in `AI/skills/k
 | `compatibility` | string | skills | Optional compatibility note rendered with the skill. |
 | `metadata` | object | skills | Optional nested metadata. Preserve it when present. |
 | `skills.excludeCommands.copilot` | string[] | skills | Optional list of canonical command basenames to skip when generating Copilot child skills. |
+| `skills.excludeItems.<client>` | string[] | skills | Optional list of top-level bundled files or folders to exclude from rendered skill output for a specific client. Supported client keys are `copilot` and `claude`. |
 | `bodyReplacements` | object | agents, instructions, skills | Optional per-client string substitutions applied after client markers are resolved. Keys are `copilot.vscode`, `copilot.cli`, `copilot` (shared skills), or `claude`. Each value is a flat object of old → new string pairs applied top-to-bottom. |
 
 `agents.handoffs[]` supports these nested fields:
@@ -275,7 +276,7 @@ If a canonical skill has a `commands/*.md` folder, Copilot publishing also gener
 - Repo-local publishing is controlled by `enabled.repositories`.
 - Instructions use `instructions.scope` instead of split Claude-specific enable flags. Omitted scope and empty scope both mean global. Non-empty scope means path-scoped output.
 - Agents should use canonical schema fields `agents.model`, `agents.tools`, `agents.userInvocable`, `agents.subAgents`, and `agents.handoffs`.
-- Skills should use `skills.excludeCommands.copilot`.
+- Skills should use `skills.excludeCommands.copilot` and `skills.excludeItems.<client>` when bundled folders should not publish to every client.
 - `claude.target` is legacy-only for agents and should not be documented as a normal supported field.
 - Legacy root-level field shapes may still exist in older artifacts, but this readme documents the target schema only.
 

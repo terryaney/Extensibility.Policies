@@ -2637,6 +2637,18 @@ function Split-MarkdownFrontmatter {
     }
 }
 
+function Get-SkillExcludedItemNames {
+    param(
+        [object]$Meta,
+        [ValidateSet('copilot', 'claude')]
+        [string]$Client
+    )
+
+    $skillMeta = Get-Prop $Meta 'skills'
+    $excludeItems = Get-Prop $skillMeta 'excludeItems'
+    return @(ConvertTo-StringArray (Get-Prop $excludeItems $Client))
+}
+
 function New-CopilotSkillDefinition {
     param([object]$SkillDefinition)
 
@@ -3098,6 +3110,12 @@ function Install-RenderedSkill {
         $excludedItemNames += 'commands'
     }
 
+    if ($Target -in @('copilot', 'claude')) {
+        foreach ($excludedItemName in (Get-SkillExcludedItemNames -Meta $SkillDefinition.Meta -Client $Target)) {
+            $excludedItemNames += $excludedItemName
+        }
+    }
+
     $additionalExcludedItemNames = @()
     $excludedItemNamesProperty = $SkillDefinition.PSObject.Properties['ExcludedItemNames']
     if ($null -ne $excludedItemNamesProperty) {
@@ -3105,7 +3123,9 @@ function Install-RenderedSkill {
     }
 
     if ($additionalExcludedItemNames.Count -gt 0) {
-        $excludedItemNames += $additionalExcludedItemNames
+        foreach ($excludedItemName in $additionalExcludedItemNames) {
+            $excludedItemNames += $excludedItemName
+        }
     }
 
     $excludedItemNames = @($excludedItemNames | Select-Object -Unique)
@@ -3132,4 +3152,3 @@ function Install-RenderedSkill {
 }
 
 Invoke-PolicySync
-
