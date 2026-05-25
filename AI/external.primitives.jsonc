@@ -1,7 +1,7 @@
 {
   "skill-creator": {
 	"client": "claude",
-	"command": "npx skills add https://github.com/anthropics/skills --skill skill-creator --agent claude-code --global --yes --copy",
+	"command": "npx --yes skills add https://github.com/anthropics/skills --skill skill-creator --agent claude-code --global --yes --copy",
 	"enabled": true,
 	"applyForUsers": [
 	  "terry.aney"
