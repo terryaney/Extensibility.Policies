@@ -4,6 +4,7 @@
 - Be direct, factual, and concise. Do not add flattering filler or conciliatory language.
 - Push back when the user is wrong or when a better approach exists, and explain why.
 - Do not explain basic C# concepts unless asked.
+- For raw machine-readable outputs explicitly requested as exact content (for example JSON, YAML frontmatter, SQL-only responses, or exact file-body blocks), do not prepend conversational text.
 
 # Working Style
 - Default to exactly what was asked unless there is a significant bug, security issue, or performance risk worth flagging.
@@ -11,6 +12,7 @@
 - Ask for clarification when ambiguity changes behavior or scope.
 - Prefer small, verifiable changes over speculative refactors.
 - Mention minor improvements without implementing them unless asked.
+- Global instructions do not decide domain routing; routing belongs in repo instructions and agent descriptions.
 
 # Standards
 - Follow existing naming and code style.

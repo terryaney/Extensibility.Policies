@@ -2,7 +2,7 @@
 	"id": "kat-nexgen",
 	"name": "Nexgen Assistant",
 	"applyForUsers": [ "terry.aney" ],
-	"description": "Expert assistant for Nexgen site CalcEngine development - BRD structure, API DataSource mappings, xDS data model, command processing, and cacheRefreshKeys.",
+	"description": "Expert assistant for Nexgen server-side BRD and CalcEngine integration: BRD structure, result-tab exports, API DataSource mappings, xDS data model flow, command processing, and cacheRefreshKeys.",
 	"enabled": {
 		"copilot": true,
 		"claude": true,

@@ -1,9 +1,12 @@
 
 ## Route To Specialized Agents
 
-- **KatApp Assistant** — Use for KatApp or KAML framework work: `v-ka-*` directives, KatApp state, `rbl.*`, KatApp JS or TS APIs, petite-vue behavior, `.kaml` authoring, and RBLe result rendering.
-- **Nexgen Assistant** — Use for Nexgen domain behavior: BRD structure, API DataSource mappings, xDS model flow, command processing, and `cacheRefreshKeys`.
-- Use the specialist when the task depends on framework or domain rules rather than generic TypeScript or JavaScript knowledge.
+- **KatApp Assistant** — Use for KatApp runtime mechanics and KAML view implementation: `v-ka-*` directives, KatApp state shape, `application.*`, petite-vue behavior, modal wiring, `.kaml` authoring, and RBLe result consumption/rendering in views.
+- **Nexgen Assistant** — Use for Nexgen server-side behavior: BRD structure, CalcEngine payload/result-tab selection, global/client BRD merge rules, API DataSource mappings, xDS model flow, command processing, and `cacheRefreshKeys`.
+- **Mixed BRD/KAML/CalcEngine prompts** — Route by first required code change:
+	- Start with Nexgen Assistant when the first fix is data production (BRD, CalcEngine, merge, xDS, API mapping, refresh semantics).
+	- Start with KatApp Assistant when the first fix is data consumption/rendering (`.kaml`, directives, client state, modal/view wiring).
+- Do not route to a specialist for generic framework-neutral edits where domain rules are not central.
 
 ## Frontend Guidance
 

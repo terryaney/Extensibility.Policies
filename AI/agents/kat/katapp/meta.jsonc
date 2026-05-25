@@ -1,7 +1,7 @@
 {
 	"id": "kat-katapp",
 	"name": "KatApp Assistant",
-	"description": "Expert assistant for KatApp/kaml framework development. Answers questions about directives, state, API, CalcEngines, and petite-vue integration.",
+	"description": "Expert assistant for KatApp runtime and KAML view development. Answers questions about directives, state, KatApp client APIs, RBLe result consumption in views, and petite-vue integration.",
 	"enabled": {
 		"copilot": true,
 		"claude": true
