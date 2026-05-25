@@ -10,6 +10,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $aiRoot = Join-Path $repoRoot 'AI'
 $skillRoot = Join-Path $aiRoot 'skills\kat-policies'
+$externalManifestPath = Join-Path $aiRoot 'external.primitives.jsonc'
 $sharedMetaPath = Join-Path $skillRoot 'meta.jsonc'
 $vsCodeSettingsMetaPath = Join-Path $skillRoot 'meta.vscode.settings.jsonc'
 $sharedModulePath = Join-Path $PSScriptRoot 'Kat.Policy.Mcp.psm1'
@@ -875,6 +876,222 @@ function Publish-Skills {
     }
 }
 
+function Get-ExternalPrimitiveDefinitions {
+    $manifest = Read-KatJsonDocument -Path $externalManifestPath -DefaultFactory { [pscustomobject]@{} }
+
+    $definitions = New-Object System.Collections.Generic.List[object]
+    foreach ($property in @($manifest.PSObject.Properties | Sort-Object Name)) {
+        $meta = $property.Value
+        if ($null -eq $meta) {
+            continue
+        }
+
+        if (-not (Test-UserAllowed -Meta $meta)) {
+            continue
+        }
+
+        $definitions.Add([pscustomobject]@{
+            Id = $property.Name
+            Meta = $meta
+            Enabled = ConvertTo-BoolValue (Get-Prop $meta 'enabled') $true
+            Client = [string](Get-Prop $meta 'client')
+            Command = [string](Get-Prop $meta 'command')
+        })
+    }
+
+    return @($definitions.ToArray())
+}
+
+function Test-ExternalPrimitiveClientInstalled {
+    param(
+        [ValidateSet('copilot', 'claude')]
+        [string]$Client
+    )
+
+    if ($null -eq $script:clientInstalled) {
+        return $true
+    }
+
+    switch ($Client) {
+        'copilot' {
+            return $script:clientInstalled.vscode -or $script:clientInstalled.copilotCli
+        }
+        'claude' {
+            return $script:clientInstalled.claude
+        }
+    }
+
+    return $false
+}
+
+function Get-ExternalPrimitiveInstallPath {
+    param(
+        [ValidateSet('copilot', 'claude')]
+        [string]$Client,
+        [string]$Id,
+        [object]$Roots
+    )
+
+    switch ($Client) {
+        'copilot' {
+            return Join-Path (Join-Path (Join-Path $env:USERPROFILE '.agents') 'skills') $Id
+        }
+        'claude' {
+            return Join-Path (Join-Path $Roots.ClaudeRoot 'skills') $Id
+        }
+    }
+
+    return $null
+}
+
+function Remove-ExternalPrimitiveInstall {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $true
+    }
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return $true
+    }
+
+    try {
+        Remove-Item -LiteralPath $Path -Recurse -Force -Confirm:$false -ErrorAction Stop
+        return $true
+    }
+    catch {
+        Add-BlockedPath $Path
+        return $false
+    }
+}
+
+function Get-CommandOutputSummary {
+    param(
+        [object[]]$Output,
+        [int]$MaxLength = 320
+    )
+
+    $lines = @($Output | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($lines.Count -eq 0) {
+        return $null
+    }
+
+    $summary = (($lines | Select-Object -Last 6) -join ' ') -replace '\s+', ' '
+    $summary = $summary.Trim()
+    if ($summary.Length -gt $MaxLength) {
+        return ($summary.Substring(0, $MaxLength - 3) + '...')
+    }
+
+    return $summary
+}
+
+function Invoke-ExternalPrimitiveCommand {
+    param(
+        [string]$Command,
+        [string]$WorkingDirectory
+    )
+
+    $output = @()
+    $exitCode = 0
+
+    Push-Location -LiteralPath $WorkingDirectory
+    try {
+        $output = @(& $env:ComSpec /d /c $Command 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    catch {
+        $output = @($_.Exception.Message)
+        $exitCode = 1
+    }
+    finally {
+        Pop-Location
+    }
+
+    return [pscustomobject]@{
+        ExitCode = $exitCode
+        Output = @($output)
+        Detail = Get-CommandOutputSummary -Output $output
+    }
+}
+
+function Install-ExternalPrimitives {
+    param(
+        [object]$Roots,
+        [object[]]$Definitions
+    )
+
+    foreach ($definition in $Definitions) {
+        $id = $definition.Id
+        $enabled = [bool]$definition.Enabled
+        $client = [string]$definition.Client
+        $command = [string]$definition.Command
+        $normalizedClient = if ([string]::IsNullOrWhiteSpace($client)) { '' } else { $client.Trim().ToLowerInvariant() }
+
+        foreach ($targetClient in @('copilot', 'claude')) {
+            if ($targetClient -ne $normalizedClient) {
+                Add-DeploymentRecord -Category 'skill' -Id $id -Target $targetClient -Status 'disabled' -MatrixValue 'excluded'
+            }
+        }
+
+        if ($normalizedClient -notin @('copilot', 'claude')) {
+            Add-DeploymentRecord -Category 'skill' -Id $id -Target 'claude' -Status 'blocked' -Detail "client '$client' is invalid."
+            continue
+        }
+
+        if (-not (Test-ExternalPrimitiveClientInstalled -Client $normalizedClient)) {
+            Add-DeploymentRecord -Category 'skill' -Id $id -Target $normalizedClient -Status 'disabled' -MatrixValue 'excluded'
+            continue
+        }
+
+        $installPath = Get-ExternalPrimitiveInstallPath -Client $normalizedClient -Id $id -Roots $Roots
+
+        if (-not $enabled) {
+            $wasInstalled = Test-Path -LiteralPath $installPath
+            $removed = $false
+            if ($wasInstalled) {
+                $removed = Remove-ExternalPrimitiveInstall -Path $installPath
+            }
+
+            $stillInstalled = Test-Path -LiteralPath $installPath
+            Add-DeploymentRecord `
+                -Category 'skill' `
+                -Id $id `
+                -Target $normalizedClient `
+                -Status $(if ($stillInstalled) { 'blocked' } elseif ($wasInstalled -and $removed) { 'removed' } else { 'disabled' }) `
+                -Path $(if ($wasInstalled) { $installPath } else { $null }) `
+                -MatrixValue $(if ($wasInstalled) { $null } else { 'excluded' }) `
+                -Detail $(if ($stillInstalled) { 'installed external primitive remains present.' } else { $null })
+            continue
+        }
+
+        if ([string]::IsNullOrWhiteSpace($command)) {
+            Add-DeploymentRecord -Category 'skill' -Id $id -Target $normalizedClient -Status 'blocked' -Detail 'command is required.'
+            continue
+        }
+
+        $commandResult = Invoke-ExternalPrimitiveCommand -Command $command -WorkingDirectory $repoRoot
+        $succeeded = $commandResult.ExitCode -eq 0
+        $detail = if ($succeeded) {
+            $null
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace($commandResult.Detail)) {
+            "command failed ($($commandResult.ExitCode)): $($commandResult.Detail)"
+        }
+        else {
+            "command failed ($($commandResult.ExitCode))."
+        }
+
+        Add-DeploymentRecord `
+            -Category 'skill' `
+            -Id $id `
+            -Target $normalizedClient `
+            -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) `
+            -Path $installPath `
+            -Detail $detail `
+            -MatrixValue $(if ($succeeded) { 'global' } else { $null })
+    }
+}
+
 function Publish-ClaudeDocument {
     param(
         [object]$Roots,
@@ -1301,28 +1518,33 @@ function Invoke-PolicySync {
     $agentDefinitions = Get-AgentDefinitions
     $instructionDefinitions = Get-InstructionDefinitions
     $skillDefinitions = Get-SkillDefinitionsWithContent
+    $skillHelperAgentDefinitions = @($skillDefinitions | ForEach-Object { @($_.HelperAgentDefinitions) })
+    $allAgentDefinitions = @($agentDefinitions) + @($skillHelperAgentDefinitions)
+    $externalPrimitiveDefinitions = Get-ExternalPrimitiveDefinitions
     $mcpSettings = Get-SharedMcpSettings
 
-    $managedContexts = Get-ManagedContexts -Roots $roots -AgentDefinitions $agentDefinitions -InstructionDefinitions $instructionDefinitions -SkillDefinitions $skillDefinitions
-    foreach ($context in $managedContexts) {
-        $collapseEmptyToRoot = $null
-        if ($context -is [System.Collections.IDictionary] -and $context.Contains('CollapseEmptyToRoot')) {
-            $collapseEmptyToRoot = $context['CollapseEmptyToRoot']
+    try {
+        $managedContexts = Get-ManagedContexts -Roots $roots -AgentDefinitions $allAgentDefinitions -InstructionDefinitions $instructionDefinitions -SkillDefinitions $skillDefinitions
+        foreach ($context in $managedContexts) {
+            $collapseEmptyToRoot = $null
+            if ($context -is [System.Collections.IDictionary] -and $context.Contains('CollapseEmptyToRoot')) {
+                $collapseEmptyToRoot = $context['CollapseEmptyToRoot']
+            }
+
+            Clear-ManagedRoot -Root $context.Root -ScanRoots $context.ScanRoots -RepositoryRoot $repoRoot -CollapseEmptyToRoot $collapseEmptyToRoot
         }
 
-        Clear-ManagedRoot -Root $context.Root -ScanRoots $context.ScanRoots -RepositoryRoot $repoRoot -CollapseEmptyToRoot $collapseEmptyToRoot
-    }
+        Publish-EditorConfig
+        Publish-TerminalFiles -Roots $roots
+        Publish-Agents -Roots $roots -Definitions $allAgentDefinitions
+        $instructionPublishResult = Publish-Instructions -Roots $roots -Definitions $instructionDefinitions
+        Publish-Skills -Roots $roots -Definitions $skillDefinitions
+        Install-ExternalPrimitives -Roots $roots -Definitions $externalPrimitiveDefinitions
+        if ($null -eq $script:clientInstalled -or $script:clientInstalled.claude) {
+            Publish-ClaudeDocument -Roots $roots -InstructionPublishResult $instructionPublishResult -Definitions $instructionDefinitions
+        }
+        Sync-VsCodeSettingsSafeguards
 
-    Publish-EditorConfig
-    Publish-TerminalFiles -Roots $roots
-    Publish-Agents -Roots $roots -Definitions $agentDefinitions
-    $instructionPublishResult = Publish-Instructions -Roots $roots -Definitions $instructionDefinitions
-    Publish-Skills -Roots $roots -Definitions $skillDefinitions
-    if ($null -eq $script:clientInstalled -or $script:clientInstalled.claude) {
-        Publish-ClaudeDocument -Roots $roots -InstructionPublishResult $instructionPublishResult -Definitions $instructionDefinitions
-    }
-    Sync-VsCodeSettingsSafeguards
-    try {
         if (Test-McpParityRequested -ServerKey 'context7') {
             Invoke-McpBootstrap -ProductName 'Context7' -HelperScript 'install-context7-remote.ps1' -McpConfig (Get-Prop $mcpSettings 'context7')
         }
@@ -1909,6 +2131,37 @@ function Get-UnresolvedPlaceholderTokens {
     return @([regex]::Matches($Content, '\{\{KAT_[A-Z0-9_.-]+\}\}', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase) | ForEach-Object {
         $_.Value
     } | Sort-Object -Unique)
+}
+
+function Resolve-SkillAgentPlaceholders {
+    param(
+        [string]$Content,
+        [object]$SkillDefinition,
+        [ValidateSet('copilot', 'claude')]
+        [string]$Client
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Content) -or $Client -ne 'copilot' -or $null -eq $SkillDefinition) {
+        return $Content
+    }
+
+    $helperDefinitions = @($SkillDefinition.HelperAgentDefinitions)
+    if ($helperDefinitions.Count -eq 0) {
+        return $Content
+    }
+
+    $resolved = $Content
+    foreach ($helperDefinition in $helperDefinitions) {
+        $helperName = [string](Get-Prop $helperDefinition 'HelperName')
+        $helperId = [string](Get-Prop $helperDefinition 'Id')
+        if ([string]::IsNullOrWhiteSpace($helperName) -or [string]::IsNullOrWhiteSpace($helperId)) {
+            continue
+        }
+
+        $resolved = $resolved.Replace("{{KAT_SKILL_AGENT.$helperName}}", $helperId)
+    }
+
+    return $resolved
 }
 
 function Get-ConfiguredSkillAllowedTools {
@@ -2654,6 +2907,7 @@ function New-CopilotSkillDefinition {
 
     $body = Resolve-ClientMarkdown -Content $SkillDefinition.Body -Client 'copilot'
     $body = Resolve-BodyReplacements -Content $body -Meta $SkillDefinition.Meta -Client 'copilot'
+    $body = Resolve-SkillAgentPlaceholders -Content $body -SkillDefinition $SkillDefinition -Client 'copilot'
     return [pscustomobject]@{
         Directory = $SkillDefinition.Directory
         Meta = $SkillDefinition.Meta
@@ -2663,7 +2917,8 @@ function New-CopilotSkillDefinition {
         Id = $SkillDefinition.Id
         ClaudeMeta = $SkillDefinition.ClaudeMeta
         CommandFiles = $SkillDefinition.CommandFiles
-        ExcludedItemNames = @('commands')
+        HelperAgentDefinitions = @($SkillDefinition.HelperAgentDefinitions)
+        ExcludedItemNames = @('commands', 'agents')
     }
 }
 
@@ -2690,6 +2945,7 @@ function Get-CopilotCommandSkillDefinitions {
 
     $baseBody = Resolve-ClientMarkdown -Content $SkillDefinition.Body -Client 'copilot'
     $baseBody = (Resolve-BodyReplacements -Content $baseBody -Meta $SkillDefinition.Meta -Client 'copilot').TrimEnd()
+    $baseBody = Resolve-SkillAgentPlaceholders -Content $baseBody -SkillDefinition $SkillDefinition -Client 'copilot'
     $skillMeta = Get-Prop $SkillDefinition.Meta 'skills'
     $excludedCommands = ConvertTo-StringArray (Get-Prop (Get-Prop $skillMeta 'excludeCommands') 'copilot')
 
@@ -2703,6 +2959,7 @@ function Get-CopilotCommandSkillDefinitions {
         $commandFolderId = $commandDisplayName
         $resolvedCommandContent = Resolve-ClientMarkdown -Content (Get-Content -LiteralPath $commandFile.FullName -Raw) -Client 'copilot'
         $resolvedCommandContent = Resolve-BodyReplacements -Content $resolvedCommandContent -Meta $SkillDefinition.Meta -Client 'copilot'
+        $resolvedCommandContent = Resolve-SkillAgentPlaceholders -Content $resolvedCommandContent -SkillDefinition $SkillDefinition -Client 'copilot'
         $commandDocument = Split-MarkdownFrontmatter -Content $resolvedCommandContent
 
         $meta = [ordered]@{
@@ -2744,9 +3001,72 @@ function Get-CopilotCommandSkillDefinitions {
             LegacyFolderId = $SkillDefinition.Id + '-' + $commandName
             ClaudeMeta = $null
             CommandFiles = @()
-            ExcludedItemNames = @('commands')
+            HelperAgentDefinitions = @($SkillDefinition.HelperAgentDefinitions)
+            ExcludedItemNames = @('commands', 'agents')
         }
     }
+}
+
+function Get-SkillHelperAgentDefinitions {
+    param([object]$SkillDefinition)
+
+    $agentsDir = Join-Path $SkillDefinition.Directory.FullName 'agents'
+    $agentsMetaPath = Join-Path $agentsDir 'meta.jsonc'
+    if (-not (Test-Path -LiteralPath $agentsMetaPath)) {
+        return @()
+    }
+
+    $helpersMeta = Read-KatJsonDocument -Path $agentsMetaPath -DefaultFactory { [pscustomobject]@{} }
+    $definitions = New-Object System.Collections.Generic.List[object]
+
+    foreach ($property in @($helpersMeta.PSObject.Properties | Sort-Object Name)) {
+        $helperName = [string]$property.Name
+        $helperMeta = $property.Value
+        if ([string]::IsNullOrWhiteSpace($helperName) -or $null -eq $helperMeta) {
+            continue
+        }
+
+        $bodyPath = Join-Path $agentsDir ($helperName + '.md')
+        if (-not (Test-Path -LiteralPath $bodyPath)) {
+            Add-Warning "$($SkillDefinition.Id): helper agent '$helperName' is defined in agents\meta.jsonc but missing $bodyPath."
+            continue
+        }
+
+        $publishedId = "$($SkillDefinition.Id)-$helperName"
+        $helperAgentsMeta = Get-Prop $helperMeta 'agents'
+        $effectiveAgentsMeta = [pscustomobject]@{}
+        if ($null -ne $helperAgentsMeta) {
+            foreach ($metaProperty in @($helperAgentsMeta.PSObject.Properties)) {
+                $effectiveAgentsMeta | Add-Member -NotePropertyName $metaProperty.Name -NotePropertyValue $metaProperty.Value -Force
+            }
+        }
+        $effectiveAgentsMeta | Add-Member -NotePropertyName 'userInvocable' -NotePropertyValue $false -Force
+
+        $meta = [pscustomobject]@{
+            id = $publishedId
+            name = $publishedId
+            description = [string](Get-Prop $helperMeta 'description' $publishedId)
+            enabled = [pscustomobject]@{
+                'copilot.vscode' = $true
+                'copilot.cli' = $true
+                claude = $false
+            }
+            agents = $effectiveAgentsMeta
+        }
+
+        $definitions.Add([pscustomobject]@{
+            Directory = Get-Item -LiteralPath $agentsDir
+            Meta = $meta
+            Body = Get-Content -LiteralPath $bodyPath -Raw
+            Enabled = Get-Prop $meta 'enabled'
+            Id = $publishedId
+            HelperName = $helperName
+            ClaudeMeta = $null
+            Repositories = @($SkillDefinition.Repositories)
+        })
+    }
+
+    return @($definitions.ToArray())
 }
 
 function ConvertTo-CopilotAgentDocument {
@@ -3017,17 +3337,22 @@ function Get-SkillDefinitionsWithContent {
         if (Test-Path -LiteralPath $commandsDir) {
             $commandFiles = @(Get-ChildItem -LiteralPath $commandsDir -File -Filter '*.md' | Sort-Object Name)
         }
+        $repositories = @(Get-EnabledRepositories -Meta $meta)
 
-        [pscustomobject]@{
+        $skillDefinition = [pscustomobject]@{
             Directory = $skillDir
             Meta = $meta
             Body = Get-Content -LiteralPath (Join-Path $skillDir.FullName 'SKILL.md') -Raw
             Enabled = Get-Prop $meta 'enabled'
             Id = Get-Prop $meta 'id' $skillDir.Name
             ClaudeMeta = Get-Prop $meta 'claude'
-            Repositories = @(Get-EnabledRepositories -Meta $meta)
+            Repositories = $repositories
             CommandFiles = $commandFiles
+            HelperAgentDefinitions = @()
         }
+        $skillDefinition.HelperAgentDefinitions = @(Get-SkillHelperAgentDefinitions -SkillDefinition $skillDefinition)
+
+        $skillDefinition
     }
 }
 

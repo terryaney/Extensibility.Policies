@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Generate and serve a review page for eval results.
+"""Generate and serve a review page for primitive eval results.
 
 Reads the workspace directory, discovers runs (directories with outputs/),
 embeds all output data into a self-contained HTML page, and serves it via
 a tiny HTTP server. Feedback auto-saves to feedback.json in the workspace.
 
 Usage:
-    python generate_review.py <workspace-path> [--port PORT] [--skill-name NAME]
+    python generate_review.py <workspace-path> [--port PORT] [--primitive-name NAME]
     python generate_review.py <workspace-path> --previous-feedback /path/to/old/feedback.json
 
 No dependencies beyond the Python stdlib are required.
@@ -249,7 +249,7 @@ def load_previous_iteration(workspace: Path) -> dict[str, dict]:
 
 def generate_html(
     runs: list[dict],
-    skill_name: str,
+    primitive_name: str,
     previous: dict[str, dict] | None = None,
     benchmark: dict | None = None,
 ) -> str:
@@ -268,7 +268,8 @@ def generate_html(
                 previous_outputs[run_id] = data["outputs"]
 
     embedded = {
-        "skill_name": skill_name,
+        "primitive_name": primitive_name,
+        "skill_name": primitive_name,
         "runs": runs,
         "previous_feedback": previous_feedback,
         "previous_outputs": previous_outputs,
@@ -315,7 +316,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
     def __init__(
         self,
         workspace: Path,
-        skill_name: str,
+        primitive_name: str,
         feedback_path: Path,
         previous: dict[str, dict],
         benchmark_path: Path | None,
@@ -323,7 +324,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
         **kwargs,
     ):
         self.workspace = workspace
-        self.skill_name = skill_name
+        self.primitive_name = primitive_name
         self.feedback_path = feedback_path
         self.previous = previous
         self.benchmark_path = benchmark_path
@@ -339,7 +340,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
                     benchmark = json.loads(self.benchmark_path.read_text())
                 except (json.JSONDecodeError, OSError):
                     pass
-            html = generate_html(runs, self.skill_name, self.previous, benchmark)
+            html = generate_html(runs, self.primitive_name, self.previous, benchmark)
             content = html.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -388,7 +389,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Generate and serve eval review")
     parser.add_argument("workspace", type=Path, help="Path to workspace directory")
     parser.add_argument("--port", "-p", type=int, default=3117, help="Server port (default: 3117)")
-    parser.add_argument("--skill-name", "-n", type=str, default=None, help="Skill name for header")
+    parser.add_argument("--primitive-name", "-n", type=str, default=None, help="Primitive name for header")
+    parser.add_argument("--skill-name", dest="skill_name_compat", type=str, default=None, help=argparse.SUPPRESS)
     parser.add_argument(
         "--previous-workspace", type=Path, default=None,
         help="Path to previous iteration's workspace (shows old outputs and feedback as context)",
@@ -413,7 +415,7 @@ def main() -> None:
         print(f"No runs found in {workspace}", file=sys.stderr)
         sys.exit(1)
 
-    skill_name = args.skill_name or workspace.name.replace("-workspace", "")
+    primitive_name = args.primitive_name or args.skill_name_compat or workspace.name.replace("-workspace", "")
     feedback_path = workspace / "feedback.json"
 
     previous: dict[str, dict] = {}
@@ -429,7 +431,7 @@ def main() -> None:
             pass
 
     if args.static:
-        html = generate_html(runs, skill_name, previous, benchmark)
+        html = generate_html(runs, primitive_name, previous, benchmark)
         args.static.parent.mkdir(parents=True, exist_ok=True)
         args.static.write_text(html)
         print(f"\n  Static viewer written to: {args.static}\n")
@@ -438,7 +440,7 @@ def main() -> None:
     # Kill any existing process on the target port
     port = args.port
     _kill_port(port)
-    handler = partial(ReviewHandler, workspace, skill_name, feedback_path, previous, benchmark_path)
+    handler = partial(ReviewHandler, workspace, primitive_name, feedback_path, previous, benchmark_path)
     try:
         server = HTTPServer(("127.0.0.1", port), handler)
     except OSError:

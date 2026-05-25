@@ -4,7 +4,7 @@ Aggregate individual run results into benchmark summary statistics.
 
 Reads grading.json files from run directories and produces:
 - run_summary with mean, stddev, min, max for each metric
-- delta between with_skill and without_skill configurations
+- delta between candidate and baseline configurations
 
 Usage:
     python aggregate_benchmark.py <benchmark_dir>
@@ -14,13 +14,13 @@ Example:
 
 The script supports two directory layouts:
 
-    Workspace layout (from skill-creator iterations):
+    Workspace layout:
     <benchmark_dir>/
     └── eval-N/
-        ├── with_skill/
+        ├── candidate/
         │   ├── run-1/grading.json
         │   └── run-2/grading.json
-        └── without_skill/
+        └── baseline/
             ├── run-1/grading.json
             └── run-2/grading.json
 
@@ -28,9 +28,9 @@ The script supports two directory layouts:
     <benchmark_dir>/
     └── runs/
         └── eval-N/
-            ├── with_skill/
+            ├── candidate/
             │   └── run-1/grading.json
-            └── without_skill/
+            └── baseline/
                 └── run-1/grading.json
 """
 
@@ -68,8 +68,7 @@ def load_run_results(benchmark_dir: Path) -> dict:
     """
     Load all run results from a benchmark directory.
 
-    Returns dict keyed by config name (e.g. "with_skill"/"without_skill",
-    or "new_skill"/"old_skill"), each containing a list of run results.
+    Returns dict keyed by config name, each containing a list of run results.
     """
     # Support both layouts: eval dirs directly under benchmark_dir, or under runs/
     runs_dir = benchmark_dir / "runs"
@@ -224,7 +223,12 @@ def aggregate_results(results: dict) -> dict:
     return run_summary
 
 
-def generate_benchmark(benchmark_dir: Path, skill_name: str = "", skill_path: str = "") -> dict:
+def generate_benchmark(
+    benchmark_dir: Path,
+    primitive_name: str = "",
+    primitive_path: str = "",
+    primitive_type: str = "",
+) -> dict:
     """
     Generate complete benchmark.json from run results.
     """
@@ -262,8 +266,11 @@ def generate_benchmark(benchmark_dir: Path, skill_name: str = "", skill_path: st
 
     benchmark = {
         "metadata": {
-            "skill_name": skill_name or "<skill-name>",
-            "skill_path": skill_path or "<path/to/skill>",
+            "primitive_name": primitive_name or "<primitive-name>",
+            "primitive_type": primitive_type or "<primitive-type>",
+            "primitive_path": primitive_path or "<path/to/primitive>",
+            "skill_name": primitive_name or "<primitive-name>",
+            "skill_path": primitive_path or "<path/to/primitive>",
             "executor_model": "<model-name>",
             "analyzer_model": "<model-name>",
             "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -291,7 +298,7 @@ def generate_markdown(benchmark: dict) -> str:
     label_b = config_b.replace("_", " ").title()
 
     lines = [
-        f"# Skill Benchmark: {metadata['skill_name']}",
+        f"# Primitive Benchmark: {metadata.get('primitive_name', metadata.get('skill_name', '<primitive-name>'))}",
         "",
         f"**Model**: {metadata['executor_model']}",
         f"**Date**: {metadata['timestamp']}",
@@ -345,14 +352,31 @@ def main():
         help="Path to the benchmark directory"
     )
     parser.add_argument(
-        "--skill-name",
+        "--primitive-name",
         default="",
-        help="Name of the skill being benchmarked"
+        help="Name of the primitive being benchmarked"
+    )
+    parser.add_argument(
+        "--primitive-path",
+        default="",
+        help="Path to the primitive being benchmarked"
+    )
+    parser.add_argument(
+        "--primitive-type",
+        default="",
+        help="Type of primitive being benchmarked (skill, agent, instruction)"
+    )
+    parser.add_argument(
+        "--skill-name",
+        dest="skill_name_compat",
+        default="",
+        help=argparse.SUPPRESS
     )
     parser.add_argument(
         "--skill-path",
+        dest="skill_path_compat",
         default="",
-        help="Path to the skill being benchmarked"
+        help=argparse.SUPPRESS
     )
     parser.add_argument(
         "--output", "-o",
@@ -367,7 +391,9 @@ def main():
         sys.exit(1)
 
     # Generate benchmark
-    benchmark = generate_benchmark(args.benchmark_dir, args.skill_name, args.skill_path)
+    primitive_name = args.primitive_name or args.skill_name_compat
+    primitive_path = args.primitive_path or args.skill_path_compat
+    benchmark = generate_benchmark(args.benchmark_dir, primitive_name, primitive_path, args.primitive_type)
 
     # Determine output paths
     output_json = args.output or (args.benchmark_dir / "benchmark.json")

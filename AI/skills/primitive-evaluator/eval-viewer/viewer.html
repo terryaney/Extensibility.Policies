@@ -671,7 +671,7 @@
         } catch { /* first run, no feedback yet */ }
       }
 
-      document.getElementById("skill-name").textContent = EMBEDDED_DATA.skill_name;
+      document.getElementById("skill-name").textContent = EMBEDDED_DATA.primitive_name || EMBEDDED_DATA.skill_name;
       showRun(0);
 
       // Wire up feedback auto-save
@@ -713,10 +713,10 @@
 
       // Config badge
       const badge = document.getElementById("config-badge");
-      const configMatch = run.id.match(/(with_skill|without_skill|new_skill|old_skill)/);
+      const configMatch = run.id.match(/(candidate|baseline|with_primitive|without_primitive|with_skill|without_skill|new_skill|old_skill)/);
       if (configMatch) {
         const config = configMatch[1];
-        const isBaseline = config === "without_skill" || config === "old_skill";
+        const isBaseline = config === "baseline" || config === "without_primitive" || config === "without_skill" || config === "old_skill";
         badge.textContent = config.replace(/_/g, " ");
         badge.className = "config-badge " + (isBaseline ? "config-baseline" : "config-primary");
         badge.style.display = "inline-block";
@@ -1128,7 +1128,7 @@
       // Header
       html += "<h2 style='font-family: Poppins, sans-serif; margin-bottom: 0.5rem;'>Benchmark Results</h2>";
       html += "<p style='color: var(--text-muted); font-size: 0.875rem; margin-bottom: 1.25rem;'>";
-      if (metadata.skill_name) html += "<strong>" + escapeHtml(metadata.skill_name) + "</strong> &mdash; ";
+      if (metadata.primitive_name || metadata.skill_name) html += "<strong>" + escapeHtml(metadata.primitive_name || metadata.skill_name) + "</strong> &mdash; ";
       if (metadata.timestamp) html += metadata.timestamp + " &mdash; ";
       if (metadata.evals_run) html += "Evals: " + metadata.evals_run.join(", ") + " &mdash; ";
       html += (metadata.runs_per_configuration || "?") + " runs per configuration";

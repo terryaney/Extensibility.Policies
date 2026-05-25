@@ -1,0 +1,23 @@
+{
+	"primitive-analyzer": {
+		"description": "Analyze benchmark and blind-comparison results for primitive-evaluator so the next revision targets the biggest quality gaps in a skill, agent, or instruction.",
+		"agents": {
+			"model": "GPT-5.4 (copilot)",
+			"tools": [ "read", "search", "edit", "execute" ]
+		}
+	},
+	"primitive-comparator": {
+		"description": "Blind-compare two primitive outputs for primitive-evaluator without knowing which version produced each result.",
+		"agents": {
+			"model": "GPT-5.4 (copilot)",
+			"tools": [ "read", "search", "edit", "execute" ]
+		}
+	},
+	"primitive-grader": {
+		"description": "Grade a primitive-evaluator run against its expectations by reading transcripts, outputs, and supporting files.",
+		"agents": {
+			"model": "GPT-5.4 (copilot)",
+			"tools": [ "read", "search", "edit", "execute" ]
+		}
+	}
+}

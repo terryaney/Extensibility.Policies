@@ -8,6 +8,8 @@ Edit only the files in `C:\BTR\Extensibility\Policies\`. All projects immediatel
 
 Because these configuration files are either hard coded locations or only discovered by walking upward from the project directory, every BTR/KAT project picks up the shared rules by default. The update script renders canonical AI content into client-specific formats, then installs only KAT-managed copied files into the detected destination folders.
 
+Externally managed primitives are declared in `AI\external.primitives.jsonc`. `update.ps1` executes the listed external install command for the configured client when enabled, and removes the installed external skill from that client's known global path when `enabled` is `false`.
+
 ## Installation
 
 1. Clone repository to your local machine:
@@ -49,6 +51,7 @@ Once you've installed this once, the `kat-policies` skill will be available in y
 | `Directory.Packages.Camelot.props` | Manages NuGet package versions for Camelot framework projects |
 | `Directory.Packages.Evolution.props` | Manages NuGet package versions for Evolution framework projects |
 | `/AI` | Canonical source for agents, instructions, skills, and per-client metadata rendered into Copilot and Claude destinations. |
+| `/AI/external.primitives.jsonc` | Install catalog for external primitives keyed by id, with a single target client, a root `enabled` boolean, and the install `command`. |
 | `/Terminal` | Provides consistent Terminal settings for Windows Terminal. |
 
 ## AI Layout
@@ -59,6 +62,7 @@ Canonical AI content lives under `/AI` and is authored once, then rendered into 
 
 ```text
 /AI/
+  external.primitives.jsonc
   agents/
     [group/]*
       <agent-folder>/
@@ -109,7 +113,9 @@ Each canonical skill lives in `/AI/skills/<id>/`.
 - `SKILL.md` contains the shared body only.
 - `meta.jsonc` uses the shared metadata shape plus skill-specific fields such as `license`, `compatibility`, `metadata`, and `skills.excludeCommands.copilot`.
 - Supporting files remain beside the skill and are installed into published skill directories as regular folders containing KAT-managed copied files.
+- Skills may also include `agents/meta.jsonc` under the skill folder. Claude keeps those helper files bundled inside the published skill, while Copilot can synthesize real non-user-invocable helper agents named `<skill>-<helper>` from that grouped metadata.
 - `commands/*.md` are canonical command workflow files. If present, they are automatically nested in `~/.claude/skills/{id}/commands/` for Claude and rendered as standalone child skills for Copilot with a filesystem-safe folder id `<skill>-<command>` and a published skill name `<skill>.<command>`.
+- `AI/external.primitives.jsonc` is separate from canonical skills. Each external entry targets one client with a root `client` property and a root `enabled` boolean. When `enabled` is `true`, the updater executes the listed `command`. When `enabled` is `false`, the updater removes the installed external skill from that client's known global install path if it exists.
 
 ### Rendered Destinations
 
@@ -123,6 +129,8 @@ The renderer currently targets these install locations:
 
 <sup>1</sup> When `enabled.repositories` includes repo-local targets, the equivalent repo paths are also published for supported clients: `.github/agents/*.agent.md`, `.claude/agents/*.md`, `.github/instructions/*.instructions.md`, and either `.claude/instructions/*.md` plus generated `.claude/CLAUDE.md` imports for global instructions or `.claude/rules/*.md` for path-scoped instructions.
 <sup>2</sup> When `enabled.repositories` includes repo-local targets for a skill, Copilot skill output is published under `.github/skills/<id>/` and Claude skill output under `.claude/skills/<id>/`. If a canonical skill has a `commands/*.md` folder, Copilot child skills are also published under `skills/<parent>.<command>/`, matching the published skill name `<parent>.<command>`, and Claude command markdown is nested under `skills/<parent>/commands/`.
+
+External installable skills use provider-native locations instead of the canonical renderer paths above. With the current `skills-cli` behavior, GitHub Copilot installs land under `.agents/skills/` for project scope and `~/.agents/skills/` for global scope, while Claude installs use `.claude/skills/` or `~/.claude/skills/`. KAT-rendered local skills still use the renderer-managed `.github/skills/` and `~/.copilot/skills/` paths.
 
 ## Renderer Notes
 
@@ -245,6 +253,18 @@ The renderer applies the following matrix when resolving markers for each publis
 
 Skills deploy a single shared file read by both VS Code and Copilot CLI. Sub-client markers in skill bodies are still resolved, but since both clients read the same file, only plain `<!-- copilot:start -->` markers are meaningful in practice for skills.
 
+Copied support files can also use a code-safe line marker form when HTML comments would break the file syntax:
+
+```py
+# [kat:copilot:start]
+copilot_only = True
+# [kat:copilot:end]
+
+# [kat:claude:start]
+claude_only = True
+# [kat:claude:end]
+```
+
 ### Body Replacements
 
 `meta.jsonc` supports an optional `bodyReplacements` object for client-specific string substitutions. After client markers are resolved, the renderer applies all replacements for the matching client key top-to-bottom.
@@ -265,6 +285,8 @@ Skills deploy a single shared file read by both VS Code and Copilot CLI. Sub-cli
 ```
 
 Valid client keys are `copilot.vscode`, `copilot.cli`, `copilot` (shared skills), and `claude`. Each key's value is a flat object mapping old strings to new strings. Replacements are applied as plain string substitutions in the order they appear.
+
+Copied support files also support sidecar overrides when markers are not practical. A file like `run_eval.copilot.py` publishes as `run_eval.py` only for Copilot, and `run_eval.claude.py` publishes as `run_eval.py` only for Claude. When both a shared base file and a client sidecar exist, the sidecar wins for that client and the sidecar filename itself is not published.
 
 If a canonical skill has a `commands/*.md` folder, Copilot publishing also generates standalone child skill folders named `<parent>.<command>`. The folder name matches the published skill name, so a command can be invoked as `/visual-explainer.diff-review`. Copilot skill installs do not include a `commands` folder.
 

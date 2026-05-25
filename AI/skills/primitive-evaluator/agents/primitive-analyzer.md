@@ -1,19 +1,19 @@
-# Post-hoc Analyzer Agent
+# Post-hoc Primitive Analyzer Agent
 
-Analyze blind comparison results to understand WHY the winner won and generate improvement suggestions.
+Analyze blind comparison results to understand WHY the winner won and generate improvement suggestions for a primitive.
 
 ## Role
 
-After the blind comparator determines a winner, the Post-hoc Analyzer "unblids" the results by examining the skills and transcripts. The goal is to extract actionable insights: what made the winner better, and how can the loser be improved?
+After the blind comparator determines a winner, the post-hoc analyzer "unblinds" the results by examining the primitives and transcripts. The goal is to extract actionable insights: what made the winner better, and how can the loser be improved?
 
 ## Inputs
 
 You receive these parameters in your prompt:
 
 - **winner**: "A" or "B" (from blind comparison)
-- **winner_skill_path**: Path to the skill that produced the winning output
+- **winner_path**: Path to the primitive that produced the winning output
 - **winner_transcript_path**: Path to the execution transcript for the winner
-- **loser_skill_path**: Path to the skill that produced the losing output
+- **loser_path**: Path to the primitive that produced the losing output
 - **loser_transcript_path**: Path to the execution transcript for the loser
 - **comparison_result_path**: Path to the blind comparator's output JSON
 - **output_path**: Where to save the analysis results
@@ -26,10 +26,10 @@ You receive these parameters in your prompt:
 2. Note the winning side (A or B), the reasoning, and any scores
 3. Understand what the comparator valued in the winning output
 
-### Step 2: Read Both Skills
+### Step 2: Read Both Primitives
 
-1. Read the winner skill's SKILL.md and key referenced files
-2. Read the loser skill's SKILL.md and key referenced files
+1. Read the winner primitive's main prompt file and key referenced files
+2. Read the loser primitive's main prompt file and key referenced files
 3. Identify structural differences:
    - Instructions clarity and specificity
    - Script/tool usage patterns
@@ -49,10 +49,10 @@ You receive these parameters in your prompt:
 ### Step 4: Analyze Instruction Following
 
 For each transcript, evaluate:
-- Did the agent follow the skill's explicit instructions?
-- Did the agent use the skill's provided tools/scripts?
-- Were there missed opportunities to leverage skill content?
-- Did the agent add unnecessary steps not in the skill?
+- Did the agent follow the primitive's explicit instructions?
+- Did the agent use the primitive's provided tools/scripts?
+- Were there missed opportunities to leverage primitive content?
+- Did the agent add unnecessary steps not in the primitive?
 
 Score instruction following 1-10 and note specific issues.
 
@@ -76,7 +76,7 @@ Determine what held the loser back:
 
 ### Step 7: Generate Improvement Suggestions
 
-Based on the analysis, produce actionable suggestions for improving the loser skill:
+Based on the analysis, produce actionable suggestions for improving the loser primitive:
 - Specific instruction changes to make
 - Tools/scripts to add or modify
 - Examples to include
@@ -96,8 +96,8 @@ Write a JSON file with this structure:
 {
   "comparison_summary": {
     "winner": "A",
-    "winner_skill": "path/to/winner/skill",
-    "loser_skill": "path/to/loser/skill",
+    "winner_path": "path/to/winner/primitive",
+    "loser_path": "path/to/loser/primitive",
     "comparator_reasoning": "Brief summary of why comparator chose winner"
   },
   "winner_strengths": [
@@ -157,7 +157,7 @@ Write a JSON file with this structure:
 
 - **Be specific**: Quote from skills and transcripts, don't just say "instructions were unclear"
 - **Be actionable**: Suggestions should be concrete changes, not vague advice
-- **Focus on skill improvements**: The goal is to improve the losing skill, not critique the agent
+- **Focus on primitive improvements**: The goal is to improve the losing primitive, not critique the agent
 - **Prioritize by impact**: Which changes would most likely have changed the outcome?
 - **Consider causation**: Did the skill weakness actually cause the worse output, or is it incidental?
 - **Stay objective**: Analyze what happened, don't editorialize
@@ -186,18 +186,18 @@ Use these categories to organize improvement suggestions:
 
 # Analyzing Benchmark Results
 
-When analyzing benchmark results, the analyzer's purpose is to **surface patterns and anomalies** across multiple runs, not suggest skill improvements.
+When analyzing benchmark results, the analyzer's purpose is to **surface patterns and anomalies** across multiple runs, not suggest primitive improvements prematurely.
 
 ## Role
 
-Review all benchmark run results and generate freeform notes that help the user understand skill performance. Focus on patterns that wouldn't be visible from aggregate metrics alone.
+Review all benchmark run results and generate freeform notes that help the user understand primitive performance. Focus on patterns that wouldn't be visible from aggregate metrics alone.
 
 ## Inputs
 
 You receive these parameters in your prompt:
 
 - **benchmark_data_path**: Path to the in-progress benchmark.json with all run results
-- **skill_path**: Path to the skill being benchmarked
+- **primitive_path**: Path to the primitive being benchmarked
 - **output_path**: Where to save the notes (as JSON array of strings)
 
 ## Process
@@ -205,16 +205,16 @@ You receive these parameters in your prompt:
 ### Step 1: Read Benchmark Data
 
 1. Read the benchmark.json containing all run results
-2. Note the configurations tested (with_skill, without_skill)
+2. Note the configurations tested (preferably `candidate` and `baseline`, though historical names may still appear)
 3. Understand the run_summary aggregates already calculated
 
 ### Step 2: Analyze Per-Assertion Patterns
 
 For each expectation across all runs:
-- Does it **always pass** in both configurations? (may not differentiate skill value)
+- Does it **always pass** in both configurations? (may not differentiate primitive value)
 - Does it **always fail** in both configurations? (may be broken or beyond capability)
-- Does it **always pass with skill but fail without**? (skill clearly adds value here)
-- Does it **always fail with skill but pass without**? (skill may be hurting)
+- Does it **always pass in candidate but fail in baseline**? (the primitive clearly adds value here)
+- Does it **always fail in candidate but pass in baseline**? (the primitive may be hurting)
 - Is it **highly variable**? (flaky expectation or non-deterministic behavior)
 
 ### Step 3: Analyze Cross-Eval Patterns
@@ -227,7 +227,7 @@ Look for patterns across evals:
 ### Step 4: Analyze Metrics Patterns
 
 Look at time_seconds, tokens, tool_calls:
-- Does the skill significantly increase execution time?
+- Does the primitive significantly increase execution time?
 - Is there high variance in resource usage?
 - Are there outlier runs that skew the aggregates?
 

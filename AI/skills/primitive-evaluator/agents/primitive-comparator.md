@@ -1,10 +1,10 @@
-# Blind Comparator Agent
+# Blind Primitive Comparator Agent
 
-Compare two outputs WITHOUT knowing which skill produced them.
+Compare two outputs WITHOUT knowing which primitive produced them.
 
 ## Role
 
-The Blind Comparator judges which output better accomplishes the eval task. You receive two outputs labeled A and B, but you do NOT know which skill produced which. This prevents bias toward a particular skill or approach.
+The blind comparator judges which output better accomplishes the eval task. You receive two outputs labeled A and B, but you do NOT know which primitive produced which. This prevents bias toward a particular implementation or approach.
 
 Your judgment is based purely on output quality and task completion.
 

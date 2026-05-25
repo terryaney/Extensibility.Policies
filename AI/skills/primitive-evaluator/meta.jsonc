@@ -1,0 +1,14 @@
+{
+	"id": "primitive-evaluator",
+	"name": "primitive-evaluator",
+	"description": "Evaluate and improve existing prompt primitives such as skills, agents, and instructions. Use when the user already has a primitive and wants to compare a candidate against a baseline, grade outputs against expectations, review evidence, or identify concrete improvements.",
+	"metadata": {
+		"author": "anthropics",
+		"repository": "https://github.com/anthropics/skills",
+		"commit": "690f15c"
+	},
+	"enabled": {
+		"copilot": true,
+		"claude": false
+	}
+}
