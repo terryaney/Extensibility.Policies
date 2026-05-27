@@ -149,7 +149,10 @@
 				"backgroundImageOpacity": 0.1,
                 "backgroundImageStretchMode": "none",
                 "icon": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\github-copilot-cli.png",
-                "commandline": "pwsh.exe -NoExit -c copilot",
+				"commandline": "pwsh.exe -NoExit -c \"copilot --yolo --experimental\"",
+                "environment": {
+                    "EDITOR": "cmd /c code --wait"
+                },
                 "guid": "{4ebca267-0832-471c-8aea-c556cc829839}",
                 "hidden": false,
                 "name": "GitHub Copilot CLI",

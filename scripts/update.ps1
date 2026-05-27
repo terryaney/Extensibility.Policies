@@ -472,21 +472,44 @@ function Publish-EditorConfig {
 function Publish-TerminalFiles {
     param([object]$Roots)
 
-    if ($Roots.TerminalRoot) {
-        Get-ChildItem -LiteralPath (Join-Path $repoRoot 'Terminal') -Recurse -File | ForEach-Object {
-            $relativePath = $_.FullName.Substring((Join-Path $repoRoot 'Terminal').Length).TrimStart('\')
-            $targetPath = Join-Path $Roots.TerminalRoot $relativePath
-            # Terminal does not reliably hot-reload symlink targets, so always manage as copied files.
-            $targetSucceeded = Copy-ManagedFile -Path $targetPath -SourcePath $_.FullName -ForceOwnedPath $true
-            Add-DeploymentRecord -Category 'link' -Id ('Terminal/' + ($relativePath -replace '\\', '/')) -Target 'terminal' -Status $(if ($targetSucceeded) { 'ok' } else { 'blocked' }) -Path $targetPath
-        }
+    $terminalSourcePath = Join-Path $repoRoot 'Terminal'
+    $metaPath = Join-Path $terminalSourcePath 'meta.jsonc'
 
+    $filesToProcess = New-Object System.Collections.Generic.List[pscustomobject]
+
+    if (Test-Path -LiteralPath $metaPath) {
+        $meta = Read-KatJsonDocument -Path $metaPath -DefaultFactory { [pscustomobject]@{} }
+        foreach ($property in @($meta.PSObject.Properties)) {
+            if (-not (Test-UserAllowed -Meta $property.Value)) { continue }
+            $filesToProcess.Add([pscustomobject]@{
+                SourcePath = Join-Path $terminalSourcePath $property.Name
+                SourceName = $property.Name
+            })
+        }
+    }
+    else {
+        $defaultSource = Join-Path $terminalSourcePath 'settings.json'
+        if (Test-Path -LiteralPath $defaultSource) {
+            $filesToProcess.Add([pscustomobject]@{
+                SourcePath = $defaultSource
+                SourceName = 'settings.json'
+            })
+        }
+    }
+
+    if ($Roots.TerminalRoot) {
+        foreach ($fileEntry in $filesToProcess) {
+            if (-not (Test-Path -LiteralPath $fileEntry.SourcePath)) { continue }
+            $targetPath = Join-Path $Roots.TerminalRoot 'settings.json'
+            # Terminal does not reliably hot-reload symlink targets, so always manage as copied files.
+            $targetSucceeded = Copy-ManagedFile -Path $targetPath -SourcePath $fileEntry.SourcePath -ForceOwnedPath $true
+            Add-DeploymentRecord -Category 'link' -Id ('Terminal/' + $fileEntry.SourceName) -Target 'terminal' -Status $(if ($targetSucceeded) { 'ok' } else { 'blocked' }) -Path $targetPath
+        }
         return
     }
 
-    Get-ChildItem -LiteralPath (Join-Path $repoRoot 'Terminal') -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
-        $relativePath = $_.FullName.Substring((Join-Path $repoRoot 'Terminal').Length).TrimStart('\')
-        Add-DeploymentRecord -Category 'link' -Id ('Terminal/' + ($relativePath -replace '\\', '/')) -Target 'terminal' -Status 'skipped' -Path $null -Detail 'windows-terminal-not-found'
+    foreach ($fileEntry in $filesToProcess) {
+        Add-DeploymentRecord -Category 'link' -Id ('Terminal/' + $fileEntry.SourceName) -Target 'terminal' -Status 'skipped' -Path $null -Detail 'windows-terminal-not-found'
     }
 }
 
