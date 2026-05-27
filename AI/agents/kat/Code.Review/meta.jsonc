@@ -1,8 +1,9 @@
 {
-	"id": "Code.Review.Orchestrator",
-	"name": ".NET Core Code Review",
+	"id": "kat-code-review",
+	"name": "KAT .NET Core Code Review",
 	"description": "Run three parallel code reviews (GPT, Gemini, Codex)",
-	"metadata": {
+	"metadata.info": {
+		"description": "Originally based on repository described here but tailored to .NET Core and also leveraged a single agent.  Currently disabled in favor of Anvil and built in review prompts, so never tested fully.",
 		"author": "pierceboggan",
 		"repository": "https://github.com/pierceboggan/coloring-book/",
 		"path": "prompts/code-review.prompt.md",
@@ -20,11 +21,6 @@
 			"edit",
 			"vscode/memory"
 		],
-		"userInvocable": true,
-		"subAgents": [
-			"Reviewer (GPT)",
-			"Reviewer (Gemini)",
-			"Reviewer (Codex)"
-		]
+		"userInvocable": true
 	}
 }
