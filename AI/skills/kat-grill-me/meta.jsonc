@@ -1,0 +1,16 @@
+{
+	"id": "kat-grill-me",
+	"name": "kat-grill-me",
+	"description": "Interview the user relentlessly about a plan or design until reaching shared understanding, resolving each branch of the decision tree. Use when user wants to stress-test a plan, get grilled on their design, or mentions \"grill me\".",
+	"context": "fork",
+	"metadata": {
+		"author": "mattpocock",
+		"repository": "https://github.com/mattpocock/skills/",
+		"path": "skills/productivity/grill-me/SKILL.md",
+		"commit": "62f43a1"
+	},
+	"enabled": {
+		"copilot": true,
+		"claude": true
+	}
+}

@@ -1,0 +1,16 @@
+{
+	"id": "kat-caveman",
+	"name": "kat-caveman",
+	"description": "Ultra-compressed communication mode. Cuts token usage ~75% by dropping filler, articles, and pleasantries while keeping full technical accuracy. Use when user says \"caveman mode\", \"talk like caveman\", \"use caveman\", \"less tokens\", \"be brief\", or invokes /caveman.",
+	"context": "fork",
+	"metadata": {
+		"author": "mattpocock",
+		"repository": "https://github.com/mattpocock/skills/",
+		"path": "skills/productivity/caveman/SKILL.md",
+		"commit": "62f43a1"
+	},
+	"enabled": {
+		"copilot": true,
+		"claude": true
+	}
+}

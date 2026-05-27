@@ -1,0 +1,17 @@
+{
+	"id": "kat-handoff",
+	"name": "kat-handoff",
+	"description": "Compact the current conversation into a handoff document for another agent to pick up.",
+	"argument-hint": "\"What will the next session be used for?\"",
+	"context": "fork",
+	"metadata": {
+		"author": "mattpocock",
+		"repository": "https://github.com/mattpocock/skills/",
+		"path": "skills/productivity/handoff/SKILL.md",
+		"commit": "d54c497"
+	},
+	"enabled": {
+		"copilot": true,
+		"claude": true
+	}
+}
