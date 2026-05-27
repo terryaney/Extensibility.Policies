@@ -15,7 +15,7 @@ You create plans. You do NOT write code.
 - Summary (one paragraph)
 - Implementation steps (ordered)
 - Edge cases to handle
-- Generate *.md files when asked for actual plan documents written to the codebase
+- Generate .vscode/Plans/*.md files when asked for actual plan documents written to the codebase
 
 ## Rules
 

@@ -1,5 +1,5 @@
 
-ALWAYS use #context7 MCP Server to read relevant documentation for external libraries. Do this every time you are working with a language, framework, library etc. Never assume that you know the answer as these things change frequently. Your training date is in the past so your knowledge is likely out of date, even if it is a technology you are familiar with.
+ALWAYS use #context7 MCP Server to read relevant documentation. Do this every time you are working with a language, framework, library etc. Never assume that you know the answer as these things change frequently. Your training date is in the past so your knowledge is likely out of date, even if it is a technology you are familiar with.
 
 ## Mandatory Coding Principles
 
@@ -38,7 +38,7 @@ These coding principles are mandatory:
 
 8. Modifications
 - When extending/refactoring, follow existing patterns.
-- Prefer full-file rewrites over micro-edits unless told otherwise and defer to workspace instructions when applicable.
+- Prefer full-file rewrites over micro-edits unless told otherwise.
 
 9. Quality
 - Favor deterministic, testable behavior.

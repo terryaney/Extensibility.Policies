@@ -2,6 +2,12 @@
 	"id": "Ultralight.Planner",
 	"name": "Ultralight (Planner)",
 	"description": "Creates comprehensive implementation plans by researching the codebase, consulting documentation, and identifying edge cases. Use when you need a detailed plan before implementing a feature or fixing a complex issue.",
+	"metadata": {
+		"author": "burkeholland",
+		"repository": "https://github.com/burkeholland/ultralight",
+		"path": "agents/planner.agent.md",
+		"commit": "8b7b402"
+	},
 	"enabled": {
 		"copilot": false,
 		"claude": false
@@ -10,7 +16,6 @@
 		"model": "GPT-5.4 (copilot)",
 		"tools": [
 			"vscode",
-			"vscode/memory",
 			"execute",
 			"read",
 			"agent",
