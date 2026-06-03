@@ -16,6 +16,11 @@
 			"~/.claude/rules": false,
 			"~/.copilot/instructions": false,
 			"~/AppData/Roaming/Code/User/instructions": true
-		}
+		},
+		"chat.permissions.default": "autoApprove",
+		"chat.tools.terminal.outputDeltas": true,
+		"chat.sessionSync.enabled": true,
+		"chat.tools.compressOutput.enabled": true,
+		"github.copilot.chat.claudeAgent.allowAutoPermissions": true
 	}
 }
