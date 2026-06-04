@@ -1,0 +1,14 @@
+<Project>
+
+	<PropertyGroup>
+		<!--
+			Restore the project graph in a single in-process pass instead of fanning per-project
+			graph evaluation across MSBuild worker nodes. On this multi-project graph that cuts
+			restore from ~12s to ~2s with no loss of build parallelism.
+
+			See C:\BTR\Extensibility\Policies\Directory.Build.props.readme.md for more details.
+		-->
+		<RestoreUseStaticGraphEvaluation>true</RestoreUseStaticGraphEvaluation>
+	</PropertyGroup>
+
+</Project>

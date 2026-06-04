@@ -17,29 +17,20 @@ Externally managed primitives are declared in `AI\external.primitives.jsonc`. `u
 1. Run the following command in Terminal:
   `C:\BTR\Extensibility\Policies\scripts\update.ps1`
 
-If KAT Policies agent metadata requires Context7 MCP Server, `update.ps1` automatically runs `scripts\install-context7-remote.ps1`. The helper always requires `CONTEXT7_API_KEY` and fails fast when it is missing. Set `CONTEXT7_API_KEY` first:
+### MCP Servers
 
-`[Environment]::SetEnvironmentVariable("CONTEXT7_API_KEY", "<your-key>", "User")`
+`update.ps1` also bootstraps MCP servers — **Context7**, **GitHub**, and **KatLedger** — but only the ones that canonical agent tool metadata actually requests. Each runs through its own helper in `scripts\`, and each is best-effort: **there are no hard failures.** If a prerequisite (API key, PAT, detected client) is missing, the helper reports the gap, prints any setup instructions, and **skips** that server or client rather than aborting the run. Clients are only configured when detected as installed; an absent client is reported as `no-client` and skipped. Every helper supports a `-WhatIf` preview that makes no file writes.
 
-Optional preview without file writes:
+Server-specific details:
+
+- **Context7** (`install-context7-remote.ps1`) — configures VS Code, Copilot CLI, and Claude for the remote Context7 HTTP endpoint (converting existing local `stdio` entries). Requires `CONTEXT7_API_KEY`; when missing it prints setup instructions and skips. Set it with:
+  `[Environment]::SetEnvironmentVariable("CONTEXT7_API_KEY", "<your-key>", "User")`
+- **GitHub** (`install-github-remote.ps1`) — enforces remote GitHub MCP where possible: VS Code → `https://api.githubcopilot.com/mcp/`, Copilot CLI → non-readonly remote override (`github-mcp-server`), Claude → remote-first while preserving an existing local Docker fallback. Uses `GITHUB_TOKEN` (PAT) when present, otherwise best-effort host OAuth. When PAT vars are missing it prints PAT setup instructions, warns that auth is still required, and tells you to set `GITHUB_TOKEN` in User scope.
+- **KatLedger** (`install-katledger.ps1`) — downloads the configured release asset from `terryaney/Mcp.KatLedger` into `%USERPROFILE%\.kat\KatLedger\`, points client MCP configs at `KatLedger.exe`, and keeps the DB at `%USERPROFILE%\.kat\KatLedger\KatLedger.db`.
+
+Preview any helper without writing files, e.g.:
 
 `C:\BTR\Extensibility\Policies\scripts\install-context7-remote.ps1 -WhatIf`
-
-If KAT Policies agent metadata requires GitHub tools (`github/*`), `update.ps1` automatically runs `scripts\install-github-remote.ps1`. The helper enforces remote GitHub MCP where possible: VS Code is set to `https://api.githubcopilot.com/mcp/`, Copilot CLI is configured to a non-readonly remote override (`github-mcp-server`) with PAT auth when available or host OAuth best effort when PAT is missing, and Claude is configured remote-first while preserving an existing local fallback when PAT auth is unavailable.
-
-When GitHub PAT variables are missing, the helper prints PAT setup instructions, explicitly warns that auth is still required, and tells the user to set `GITHUB_TOKEN` in User scope.
-
-Copilot CLI and Claude artifacts are only created when those clients are detected as installed. If a client is absent, the helper reports `no-client` and skips that client's artifact creation.
-
-Optional preview without file writes:
-
-`C:\BTR\Extensibility\Policies\scripts\install-github-remote.ps1 -WhatIf`
-
-If KAT Policies agent metadata requires KatLedger MCP Server (`kat/ledger/*`), `update.ps1` automatically runs `scripts\install-katledger.ps1`. The helper downloads the configured GitHub release asset from `terryaney/Mcp.KatLedger` into `%USERPROFILE%\.kat\KatLedger\`, points client MCP configs at `%USERPROFILE%\.kat\KatLedger\KatLedger.exe`, and keeps the DB at `%USERPROFILE%\.kat\KatLedger\KatLedger.db`.
-
-Optional preview without file writes:
-
-`C:\BTR\Extensibility\Policies\scripts\install-katledger.ps1 -WhatIf`
 
 Once you've installed this once, the `kat-policies` skill will be available in your Copilot and Claude chats.  Simply ask to "update KAT policies" and the agent will pull the latest files and run the script automatically.
 
@@ -48,8 +39,7 @@ Once you've installed this once, the `kat-policies` skill will be available in y
 | File | Description |
 |------|-------------|
 | `.editorconfig` | Defines consistent coding styles across editors and IDEs (Visual Studio, VS Code, Rider, etc.).|
-| `Directory.Packages.Camelot.props` | Manages NuGet package versions for Camelot framework projects |
-| `Directory.Packages.Evolution.props` | Manages NuGet package versions for Evolution framework projects |
+| `Directory.Build.props` | MSBuild props deployed to `C:\BTR\Camelot\Directory.Build.props` (enables `RestoreUseStaticGraphEvaluation` for the Camelot graph). See `Directory.Build.Props.readme.md`. |
 | `/AI` | Canonical source for agents, instructions, skills, and per-client metadata rendered into Copilot and Claude destinations. |
 | `/AI/external.primitives.jsonc` | Install catalog for external primitives keyed by id, with a single target client, a root `enabled` boolean, and the install `command`. |
 | `/Terminal` | Provides consistent Terminal settings for Windows Terminal. |
@@ -134,7 +124,7 @@ External installable skills use provider-native locations instead of the canonic
 
 ## Renderer Notes
 
-The update script now renders from canonical source instead of maintaining separate pre-rendered `/Copilot` and `/Claude` trees. This section is the primary reviewer handoff for the renderer direction and contains the target metadata reference.
+The update script renders all client artifacts from the canonical `/AI` source. This section is the primary reviewer handoff for the renderer and contains the target metadata reference.
 
 ### Purpose
 
@@ -147,15 +137,17 @@ The renderer is trying to accomplish four things:
 
 ### Supported Process
 
-`scripts/update.ps1` currently supports this workflow:
+`scripts/update.ps1` runs this workflow:
 
-1. Discover the install roots for VS Code, Copilot CLI, Claude, and Windows Terminal.
+1. Discover the install roots for BTR configurations, VS Code, Copilot CLI, Claude, and Windows Terminal.
 1. Scan known managed roots and remove only KAT-managed files and directories before republishing.
 1. Parse canonical `meta.jsonc` files, including line comments.
 1. Render target-specific frontmatter and write the final published files.
 1. Install supporting skill files as copied managed files beside the rendered `SKILL.md` files.
 1. Generate `~/.claude/CLAUDE.md` from the enabled instruction imports.
-1. Copy Terminal settings instead of linking them, because Windows Terminal does not reliably live-reload changes through linked paths.
+1. Deploy Terminal\settings.json to local user install folder.
+1. Deploy `.editorconfig` to `C:\BTR\.editorconfig`.
+1. Deploy `Directory.Build.props` to `C:\BTR\Camelot\Directory.Build.props`.
 1. Mark rendered files as read-only and stamp managed plain files with a `CreatedBy=KAT` alternate data stream when possible.
 1. Print a deployment matrix plus compatibility summary after each run.
 1. When Context7 is requested by canonical agent tool metadata, invoke the remote Context7 bootstrap helper to ensure VS Code, Copilot CLI, and Claude Context7 MCP entries are set to remote HTTP (converting existing local `stdio` entries where present).
@@ -348,31 +340,24 @@ At the time of this update, the remaining compatibility warnings are the intenti
 
 Everything else in the current summary is either explicitly mapped or intentionally published into only one client's model.
 
-## Copilot Notes
+## Central Package Management (CPM) for .NET
 
-**Ultralight Orchestrator **
+> **IMPORTANT — not implemented yet.** Nothing below is wired up; it describes the intended design only. The `Directory.Packages.props` files described here have never existed in this repo. If CPM is ever adopted, be aware it **conflicts with the root-level `Directory.Build.props`** that enables `RestoreUseStaticGraphEvaluation` — globally-referenced packages (`GlobalPackageReference`) under CPM are a documented NU1100 trigger with static-graph restore (see `Directory.Build.Props.readme.md`). Validate the full restore against static graph before turning CPM on.
 
-- Started from Burke Holland's [ultralight](https://burkeholland.github.io/ultralight/)
-- Updated Coder from Claude Opus 4.6 (copilot) to GPT-5.3-Codex (copilot) from [Montemagno](https://x.com/jamesmontemagno/status/2023941950815302139?s=52) - want to see his agent files still.  Also one comment was 'single-pass full implementation', should I try to put that in planner/orchestrator?
-- Updated Orchestrator from Claude Sonnet 4.5 (copilot)
-	- to Claude Sonnet 4.6 (copilot) after release of 4.6 and all the hype
-	- to GPT-5.4 (copilot) after release of 5.4 and all the hype
-- Updated Planner from GPT-5.2 (copilot) 
-	- to Claude Sonnet 4.6 (copilot) after release of 4.6 and all the hype
-	- back to GPT-5.4 (copilot) after release of 5.4 and all the hype
+CPM works by NuGet auto-discovering the nearest file named exactly `Directory.Packages.props` while walking **up** the directory tree from each project. To give each KAT framework its own version set, the file lives at the **framework root** rather than being carried per-repo or given a framework-specific name:
 
-## Claude Notes
+- `C:\BTR\Camelot\Directory.Packages.props` — versions for Camelot framework repos.
+- `C:\BTR\Evolution\Directory.Packages.props` — versions for Evolution framework repos.
 
-[Visual Explainer](https://github.com/nicobailon/visual-explainer) - An agent skill that turns complex terminal output into styled HTML pages you actually want to read.
+Because every Camelot repo lives under `C:\BTR\Camelot` and every Evolution repo under `C:\BTR\Evolution`, each project auto-discovers the correct framework file with no per-project import, and the two frameworks can pin different versions. These files would be deployed and KAT-owned (stamped with the `CreatedBy=KAT` alternate data stream, the same ownership model the renderer uses for other managed files), so they are managed centrally and should not be hand-edited in place.
 
-## Global Package Management for .NET
-
-Each framework (Evolution, Camelot, etc.) has its own package file (i.e. `Directory.Packages.Camelot.props`) so that the same nuget package versions are used by default (which is KAT standard policy).
-
-The format of global package management is something like:
+The framework file sets the central-management flag and declares one `PackageVersion` per package:
 
 ```xml
 <Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="Serilog" Version="2.12.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="7.0.0" />
@@ -380,53 +365,44 @@ The format of global package management is something like:
 </Project>
 ```
 
-### Importing the Global Package File in Each Repo
+### How `.csproj` Files Change
 
-All .csproj files for a given framework (Evolution, Camelot, etc.) should import the appropriate global package file to automatically use versions specified in policies.
-
-```xml
-<Project>
-  <Import Project="C:\BTR\Extensibility\Policies\Directory.Packages.Camelot.props" />
-</Project>
-```
-
-Example project reference to use globally managed version.  No version number is needed — it comes from the global file.
+With CPM on, projects reference packages with **no version** — the version comes from the framework's `Directory.Packages.props`:
 
 ```xml
 <ItemGroup>
-    <PackageVersion Include="Serilog" />
-    <PackageVersion Include="Microsoft.Extensions.Logging" />
+  <PackageReference Include="Serilog" />
+  <PackageReference Include="Microsoft.Extensions.Logging" />
 </ItemGroup>
 ```
 
-### Overriding Global Package Versions
+Specifying `Version` on a `PackageReference` while CPM is on raises **NU1008**; use the override mechanisms below instead.
 
-There are two supported override mechanisms.
+### Overriding Versions
 
-**A. Repo Level Override (`Directory.Packages.props` in a specific repository).**
+**A. Repo-level override (affects every project in the repo).**
 
-If a repo needs different versions temporarily, add a local `Directory.Packages.props` file to the root of the repository.
-
-Example `Directory.Packages.props` file to change the Serilog version to be previously supported version
+Add a `Directory.Packages.props` at the repo root. NuGet uses the **nearest** file and stops walking, so this repo-local file *shadows* the framework file. Import the framework file explicitly, then adjust individual versions with `Update` (re-declaring with `Include` is a duplicate-item error):
 
 ```xml
 <Project>
+  <Import Project="C:\BTR\Camelot\Directory.Packages.props" />
   <ItemGroup>
-    <PackageVersion Include="Serilog" Version="2.0.11" />
+    <PackageVersion Update="Serilog" Version="2.0.11" />
   </ItemGroup>
 </Project>
 ```
 
-This file takes precedence over the global one for that repo only.
+This changes only Serilog for that repo and inherits all other framework versions unchanged.
 
-**B. Project Level Override (Inside a .csproj)**
+**B. Single-project override (inside one `.csproj`).**
 
-A project can override both global and repository level versions by specifying a version explicitly:
+Use `VersionOverride` on the `PackageReference` (a plain `Version` is NU1008 under CPM):
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Serilog" Version="2.0.13" />
+  <PackageReference Include="Serilog" VersionOverride="2.0.13" />
 </ItemGroup>
 ```
 
-This is the highest precedence override and should be used sparingly.
+This is the highest-precedence override and should be used sparingly.
