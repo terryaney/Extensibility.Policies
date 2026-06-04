@@ -446,7 +446,7 @@ function Get-ManagedContexts {
     )
 
     $managedContexts = @(
-        @{ Root = 'C:\BTR'; ScanRoots = @((Join-Path 'C:\BTR' '.editorconfig'), (Join-Path 'C:\BTR\Camelot' 'Directory.Build.props')) },
+        @{ Root = 'C:\BTR'; ScanRoots = @((Join-Path 'C:\BTR' '.editorconfig')) },
         @{ Root = $Roots.VscodeRoot; ScanRoots = @((Join-Path $Roots.VscodeRoot 'prompts'), (Join-Path $Roots.VscodeRoot 'instructions')) },
         @{ Root = $Roots.CopilotRoot; ScanRoots = @((Join-Path $Roots.CopilotRoot 'agents'), (Join-Path $Roots.CopilotRoot 'instructions'), (Join-Path $Roots.CopilotRoot 'skills')) },
         @{ Root = $Roots.ClaudeRoot; ScanRoots = @((Join-Path $Roots.ClaudeRoot 'agents'), (Join-Path $Roots.ClaudeRoot 'instructions'), (Join-Path $Roots.ClaudeRoot 'rules'), (Join-Path $Roots.ClaudeRoot 'skills'), (Join-Path $Roots.ClaudeRoot 'CLAUDE.md')) }
@@ -474,19 +474,6 @@ function Publish-EditorConfig {
 
     $editorConfigSucceeded = Copy-ManagedFile -Path $targetPath -SourcePath $sourcePath
     Add-DeploymentRecord -Category 'link' -Id '.editorconfig' -Target 'btr' -Status $(if ($editorConfigSucceeded) { 'ok' } else { 'blocked' }) -Path $targetPath
-}
-
-function Publish-CamelotBuildProps {
-    $targetPath = 'C:\BTR\Camelot\Directory.Build.props'
-    $sourcePath = Join-Path $repoRoot 'Directory.Build.props'
-
-    if ((Test-Path -LiteralPath $targetPath) -and -not (Test-KatMarker -Path $targetPath)) {
-        Add-DeploymentRecord -Category 'link' -Id 'Directory.Build.props' -Target 'camelot' -Status 'skipped' -Path $targetPath -Detail 'existing file is not KAT-owned; left untouched'
-        return
-    }
-
-    $buildPropsSucceeded = Copy-ManagedFile -Path $targetPath -SourcePath $sourcePath
-    Add-DeploymentRecord -Category 'link' -Id 'Directory.Build.props' -Target 'camelot' -Status $(if ($buildPropsSucceeded) { 'ok' } else { 'blocked' }) -Path $targetPath
 }
 
 function Publish-TerminalFiles {
@@ -1234,9 +1221,6 @@ function Get-RemovedPathInfo {
     if ($fileName -eq '.editorconfig') {
         return [pscustomobject]@{ Category = 'link'; Id = '.editorconfig'; Target = 'btr' }
     }
-    if ($fileName -eq 'Directory.Build.props' -and $Path -match '\\Camelot\\') {
-        return [pscustomobject]@{ Category = 'link'; Id = 'Directory.Build.props'; Target = 'camelot' }
-    }
 
     return $null
 }
@@ -1581,7 +1565,6 @@ function Invoke-PolicySync {
         }
 
         Publish-EditorConfig
-        Publish-CamelotBuildProps
         Publish-TerminalFiles -Roots $roots
         Publish-Agents -Roots $roots -Definitions $allAgentDefinitions
         $instructionPublishResult = Publish-Instructions -Roots $roots -Definitions $instructionDefinitions
@@ -1872,7 +1855,6 @@ function Write-ConfigurationLocationsTable {
     $includeLocation = $Verbosity -eq 'Detailed'
     $configurationTargets = @(
         [pscustomobject]@{ Category = 'link'; Target = 'btr';             Type = '.editorconfig';           SuccessStatus = 'installed' }
-        [pscustomobject]@{ Category = 'link'; Target = 'camelot';         Type = 'Camelot Directory.Build.props'; SuccessStatus = 'installed' }
         [pscustomobject]@{ Category = 'link'; Target = 'terminal';        Type = 'Windows Terminal';       SuccessStatus = 'installed' }
         [pscustomobject]@{ Category = 'config'; Target = 'vscodeSettings'; Type = 'VS Code Copilot Chat'; SuccessStatus = 'configured' }
     )

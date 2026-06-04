@@ -39,7 +39,6 @@ Once you've installed this once, the `kat-policies` skill will be available in y
 | File | Description |
 |------|-------------|
 | `.editorconfig` | Defines consistent coding styles across editors and IDEs (Visual Studio, VS Code, Rider, etc.).|
-| `Directory.Build.props` | MSBuild props deployed to `C:\BTR\Camelot\Directory.Build.props` (enables `RestoreUseStaticGraphEvaluation` for the Camelot graph). See `Directory.Build.Props.readme.md`. |
 | `/AI` | Canonical source for agents, instructions, skills, and per-client metadata rendered into Copilot and Claude destinations. |
 | `/AI/external.primitives.jsonc` | Install catalog for external primitives keyed by id, with a single target client, a root `enabled` boolean, and the install `command`. |
 | `/Terminal` | Provides consistent Terminal settings for Windows Terminal. |
@@ -147,7 +146,6 @@ The renderer is trying to accomplish four things:
 1. Generate `~/.claude/CLAUDE.md` from the enabled instruction imports.
 1. Deploy Terminal\settings.json to local user install folder.
 1. Deploy `.editorconfig` to `C:\BTR\.editorconfig`.
-1. Deploy `Directory.Build.props` to `C:\BTR\Camelot\Directory.Build.props`.
 1. Mark rendered files as read-only and stamp managed plain files with a `CreatedBy=KAT` alternate data stream when possible.
 1. Print a deployment matrix plus compatibility summary after each run.
 1. When Context7 is requested by canonical agent tool metadata, invoke the remote Context7 bootstrap helper to ensure VS Code, Copilot CLI, and Claude Context7 MCP entries are set to remote HTTP (converting existing local `stdio` entries where present).
@@ -342,7 +340,7 @@ Everything else in the current summary is either explicitly mapped or intentiona
 
 ## Central Package Management (CPM) for .NET
 
-> **IMPORTANT — not implemented yet.** Nothing below is wired up; it describes the intended design only. The `Directory.Packages.props` files described here have never existed in this repo. If CPM is ever adopted, be aware it **conflicts with the root-level `Directory.Build.props`** that enables `RestoreUseStaticGraphEvaluation` — globally-referenced packages (`GlobalPackageReference`) under CPM are a documented NU1100 trigger with static-graph restore (see `Directory.Build.Props.readme.md`). Validate the full restore against static graph before turning CPM on.
+> **IMPORTANT — not implemented yet.** Nothing below is wired up; it describes the intended design only. The `Directory.Packages.props` files described here have never existed in this repo.
 
 CPM works by NuGet auto-discovering the nearest file named exactly `Directory.Packages.props` while walking **up** the directory tree from each project. To give each KAT framework its own version set, the file lives at the **framework root** rather than being carried per-repo or given a framework-specific name:
 
