@@ -18,6 +18,7 @@
 			"~/AppData/Roaming/Code/User/instructions": true
 		},
 		"chat.permissions.default": "autoApprove",
+		"chat.autopilot.advanced.enabled": true,
 		"chat.tools.terminal.outputDeltas": true,
 		"chat.sessionSync.enabled": true,
 		"chat.tools.compressOutput.enabled": true,
