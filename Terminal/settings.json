@@ -13,6 +13,11 @@
         }
     ],
     "defaultProfile": "{d30f7331-fe8f-437a-b2c4-95f3de1b132d}",
+    "disabledProfileSources": 
+    [
+        "Windows.Terminal.Azure",
+        "Windows.Terminal.Wsl"
+    ],
     "initialCols": 130,
     "initialRows": 35,
     "keybindings": 
@@ -30,6 +35,84 @@
     [
         {
             "type": "remainingProfiles"
+        },
+        {
+            "type": "separator"
+        },
+        {
+            "allowEmpty": false,
+            "entries": 
+            [
+                {
+                    "icon": null,
+                    "profile": "{aaf1b2a3-2ed4-4083-b50f-6ff69a8d2a48}",
+                    "type": "profile"
+                },
+                {
+                    "icon": null,
+                    "profile": "{87de513c-5581-5f46-badd-39ce21f027b3}",
+                    "type": "profile"
+                },
+                {
+                    "icon": null,
+                    "profile": "{11363d42-7b4b-5498-9aae-051d94fabc9a}",
+                    "type": "profile"
+                },
+                {
+                    "icon": null,
+                    "profile": "{e1a04336-aada-4838-a97e-7038f0f793d3}",
+                    "type": "profile"
+                }
+            ],
+            "icon": null,
+            "inline": "never",
+            "name": "KAT Git Folders",
+            "type": "folder"
+        },
+        {
+            "allowEmpty": false,
+            "entries": 
+            [
+                {
+                    "icon": null,
+                    "profile": "{7c2d8c34-4f7a-4d1f-8f5d-8b7c4b6b9cda}",
+                    "type": "profile"
+                },
+                {
+                    "icon": null,
+                    "profile": "{e72abb56-ab17-50cf-9780-9bbd9b2b850c}",
+                    "type": "profile"
+                },
+                {
+                    "icon": null,
+                    "profile": "{574e775e-4f2a-5b96-ac1e-a2962a402336}",
+                    "type": "profile"
+                },
+                {
+                    "icon": null,
+                    "profile": "{0caa0dad-35be-5f56-a8ff-afceeeaa6101}",
+                    "type": "profile"
+                },
+                {
+                    "icon": null,
+                    "profile": "{4fe1b532-5bc4-5888-b816-68ecd5715af5}",
+                    "type": "profile"
+                },
+                {
+                    "icon": null,
+                    "profile": "{1b1cfb5d-3659-5440-bebd-bd37c82b57cc}",
+                    "type": "profile"
+                },
+                {
+                    "icon": null,
+                    "profile": "{5fb123f1-af88-5b5c-8953-d14a8def1978}",
+                    "type": "profile"
+                }
+            ],
+            "icon": null,
+            "inline": "never",
+            "name": "Utilities",
+            "type": "folder"
         }
     ],
     "profiles": 
@@ -88,18 +171,6 @@
                 "backgroundImageOpacity": 0.1,
                 "backgroundImageStretchMode": "none",
                 "commandline": "pwsh.exe",
-                "guid": "{fa351d13-f7d5-49ae-9c20-884c929028a5}",
-                "hidden": false,
-                "icon": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\Git-Excel-AddIn.ico",
-                "name": "Extensibility",
-                "startingDirectory": "C:\\BTR\\Extensibility"
-            },
-            {
-                "backgroundImage": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\Git-Logo.png",
-                "backgroundImageAlignment": "bottomRight",
-                "backgroundImageOpacity": 0.1,
-                "backgroundImageStretchMode": "none",
-                "commandline": "pwsh.exe",
                 "guid": "{e1a04336-aada-4838-a97e-7038f0f793d3}",
                 "hidden": false,
                 "icon": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\Git.Services.ico",
@@ -132,13 +203,13 @@
             },
             {
                 "backgroundImage": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\claude-background.png",
-				"backgroundImageAlignment": "bottomRight",
-				"backgroundImageOpacity": 0.1,
+                "backgroundImageAlignment": "bottomRight",
+                "backgroundImageOpacity": 0.1,
                 "backgroundImageStretchMode": "none",
-                "icon": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\claude.png",
                 "commandline": "pwsh.exe -NoExit -c claude",
                 "guid": "{f420a4f3-164e-4243-8a99-57cd44e9fcc2}",
                 "hidden": false,
+                "icon": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\claude.png",
                 "name": "Claude Code",
                 "startingDirectory": "C:\\BTR\\Camelot"
             },
@@ -146,15 +217,16 @@
                 "background": "#321E59",
                 "backgroundImage": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\github-copilot-cli-background.png",
                 "backgroundImageAlignment": "bottomRight",
-				"backgroundImageOpacity": 0.1,
+                "backgroundImageOpacity": 0.1,
                 "backgroundImageStretchMode": "none",
-                "icon": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\github-copilot-cli.png",
-				"commandline": "pwsh.exe -NoExit -c \"copilot --yolo --experimental\"",
-                "environment": {
+                "commandline": "pwsh.exe -NoExit -c \"copilot --yolo --experimental\"",
+                "environment": 
+                {
                     "EDITOR": "cmd /c code --wait"
                 },
                 "guid": "{4ebca267-0832-471c-8aea-c556cc829839}",
                 "hidden": false,
+                "icon": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\github-copilot-cli.png",
                 "name": "GitHub Copilot CLI",
                 "startingDirectory": "C:\\BTR\\Camelot"
             },
@@ -178,38 +250,26 @@
                 "name": "PowerShell"
             },
             {
+                "guid": "{574e775e-4f2a-5b96-ac1e-a2962a402336}",
+                "hidden": true,
+                "name": "PowerShell Core",
+                "source": "Windows.Terminal.PowershellCore"
+            },
+            {
                 "guid": "{0caa0dad-35be-5f56-a8ff-afceeeaa6101}",
                 "hidden": true,
                 "name": "cmd"
             },
             {
-                "guid": "{b453ae62-4e3d-5e58-b989-0a998ec441b8}",
-                "hidden": true,
-                "name": "Azure Cloud Shell",
-                "source": "Windows.Terminal.Azure"
-            },
-            {
-                "guid": "{574e775e-4f2a-5b96-ac1e-a2962a402336}",
-                "hidden": false,
-                "name": "PowerShell Core",
-                "source": "Windows.Terminal.PowershellCore"
-            },
-            {
-                "guid": "{5fb123f1-af88-5b5c-8953-d14a8def1978}",
-                "hidden": true,
-                "name": "PowerShell 7",
-                "source": "Windows.Terminal.PowershellCore"
-            },
-            {
                 "guid": "{4fe1b532-5bc4-5888-b816-68ecd5715af5}",
-                "hidden": false,
-                "name": "Developer Command Prompt for VS 18",
+                "hidden": true,
+                "name": "Developer Command Prompt for VS 2026",
                 "source": "Windows.Terminal.VisualStudio"
             },
             {
                 "guid": "{1b1cfb5d-3659-5440-bebd-bd37c82b57cc}",
                 "hidden": false,
-                "name": "Developer PowerShell for VS 18",
+                "name": "Developer PowerShell for VS 2026",
                 "source": "Windows.Terminal.VisualStudio"
             }
         ]
