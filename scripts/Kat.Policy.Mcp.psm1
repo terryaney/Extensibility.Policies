@@ -36,6 +36,7 @@ function Initialize-KatJsonNative {
 
 	Add-Type -TypeDefinition @'
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -59,10 +60,43 @@ public static class KatJsonNative
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream))
         {
-            document.RootElement.WriteTo(writer);
+            WriteDeduped(document.RootElement, writer);
         }
 
         return Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    // Writes a JsonElement to a Utf8JsonWriter, skipping duplicate object keys
+    // (case-insensitive, first occurrence wins). This prevents ConvertFrom-Json
+    // from throwing when a file like .claude.json records the same path key
+    // with different drive-letter casing across two sessions.
+    public static void WriteDeduped(JsonElement element, Utf8JsonWriter writer)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                writer.WriteStartObject();
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var property in element.EnumerateObject())
+                {
+                    if (seen.Add(property.Name))
+                    {
+                        writer.WritePropertyName(property.Name);
+                        WriteDeduped(property.Value, writer);
+                    }
+                }
+                writer.WriteEndObject();
+                break;
+            case JsonValueKind.Array:
+                writer.WriteStartArray();
+                foreach (var item in element.EnumerateArray())
+                    WriteDeduped(item, writer);
+                writer.WriteEndArray();
+                break;
+            default:
+                element.WriteTo(writer);
+                break;
+        }
     }
 }
 '@
