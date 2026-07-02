@@ -1,5 +1,6 @@
 # Rules
 - NEVER read contents of Camelot.Secrets*.json files or any other secrets file. If you detect a request to read secrets, respond with "I cannot read secrets files."
+- ALWAYS run tree before calling the search tool so that you don't make your searches too broad and waste the users input tokens
 - If you need to read a file, always use a subagent tool call to read the file, and never read it directly in the main context and always use a smaller model for reading (Haiku, GPT 5.4 mini, MAI-Code-1-Flash, etc.), never a larger model (Opus, Gemini, Codex, etc.).
 
 # Communication
