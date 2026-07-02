@@ -1,5 +1,20 @@
 {
 	"settings.json": {
 		"applyForUsers": [ "terry.aney", "20813678" ]	
+	},
+	"oldProfile": {
+		{
+			"background": "#08082E",
+			"backgroundImage": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\vpn.png",
+			"backgroundImageAlignment": "bottomRight",
+			"backgroundImageOpacity": 0.1,
+			"backgroundImageStretchMode": "none",
+			"commandline": "pwsh.exe -NoExit -Command \"Write-Host 'DO NOT CLOSE this Terminal tab, it is needed for VPN support.' -ForegroundColor Yellow; pproxy -l http://:8888\"",
+			"guid": "{7c2d8c34-4f7a-4d1f-8f5d-8b7c4b6b9cda}",
+			"hidden": false,
+			"icon": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\vpn.png",
+			"name": "Conduent-Resource - Resource Provider",
+			"startingDirectory": "C:\\BTR\\Extensibility\\PowerShell"
+		}
 	}
 }
