@@ -66,10 +66,12 @@ public static class KatJsonNative
         return Encoding.UTF8.GetString(stream.ToArray());
     }
 
-    // Writes a JsonElement to a Utf8JsonWriter, skipping duplicate object keys
-    // (case-insensitive, first occurrence wins). This prevents ConvertFrom-Json
-    // from throwing when a file like .claude.json records the same path key
-    // with different drive-letter casing across two sessions.
+    // Writes a JsonElement to a Utf8JsonWriter, normalizing properties that
+    // ConvertFrom-Json (PSObject mode) cannot handle:
+    //   - duplicate case-insensitive keys: first occurrence wins
+    //   - empty-string keys: skipped entirely
+    // Both are valid JSON but are produced by Claude Code's .claude.json and
+    // rejected by ConvertFrom-Json without -AsHashtable.
     public static void WriteDeduped(JsonElement element, Utf8JsonWriter writer)
     {
         switch (element.ValueKind)
@@ -79,6 +81,7 @@ public static class KatJsonNative
                 var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var property in element.EnumerateObject())
                 {
+                    if (property.Name.Length == 0) continue;
                     if (seen.Add(property.Name))
                     {
                         writer.WritePropertyName(property.Name);

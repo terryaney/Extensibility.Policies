@@ -3,8 +3,6 @@
 	"client": "claude",
 	"command": "npx --yes skills add https://github.com/anthropics/skills --skill skill-creator --agent claude-code --global --yes --copy",
 	"enabled": true,
-	"applyForUsers": [
-	  "terry.aney"
-	]
+	"applyForUsers": [ "terry.aney", "20813678" ]
   }
 }

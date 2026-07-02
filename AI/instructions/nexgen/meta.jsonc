@@ -1,7 +1,7 @@
 {
 	"id": "nexgen",
 	"name": "Nexgen Instructions",
-	"applyForUsers": [ "terry.aney" ],
+	"applyForUsers": [ "terry.aney", "20813678" ],
 	"description": "Nexgen/LWC instructions rendered for Copilot and Claude.",
 	"enabled": {
 		"copilot": true,
