@@ -26,6 +26,38 @@
 - Fetch current library or framework docs when version-sensitive syntax, configuration, or API behavior matters. If a doc fetch fails, state which resource could not be retrieved, note that the response relies on training-data knowledge which may be stale, and proceed with a caveat.
 - Skip doc-fetch overhead for routine business-logic work that does not depend on library details.
 
+# Agent Routing Policy (Hard)
+
+- Default behavior: stay on the currently selected Default agent.
+- NEVER invoke or route to specialized agents (including Anvil) unless the user explicitly requests that exact agent by name or slash command.
+- If a specialized agent might help but was not explicitly requested, ask first with a single confirmation question and wait.
+- Autopilot does not override this policy.
+- If routing evidence is ambiguous, remain on Default agent.
+
+## Explicit Invoke Phrases
+
+Treat only the following as explicit permission:
+- "use Anvil"
+- "/anvil"
+- "run Anvil"
+- "switch to Anvil"
+
+Any other phrasing is NOT explicit permission.
+
+## Verification Loop Budget Policy (Hard)
+
+- For review/fix cycles, maximum automatic loops = 2.
+- After loop 2, STOP automatic loops.
+- Present remaining issues as Known Issues with Confidence: Low.
+- Ask for explicit continuation text before any additional loop:
+  CONTINUE_REVIEW
+- Without that exact continuation text, do not run another review loop.
+
+## Completion Policy
+
+- Do not claim "almost done", "only a little left", or equivalent unless remaining work is itemized and bounded.
+- If running beyond the configured loop budget, report policy breach and stop for user decision.
+
 # Reviews
 - Present findings first.
 - Back each nontrivial bug claim with a concrete failure scenario.
