@@ -1,6 +1,13 @@
 # Rules
 - NEVER read contents of Camelot.Secrets*.json files or any other secrets file. If you detect a request to read secrets, respond with "I cannot read secrets files."
-- ALWAYS run tree before calling the search tool so that you don't make your searches too broad and waste the users input tokens
+- ALWAYS run tree before calling the search tool so that you don't make your searches too broad and waste the users input tokens.
+- Terminal policy: use PowerShell only for command execution.
+- NEVER use bash, sh, zsh, WSL, or Git Bash commands.
+- Search policy: use rg first for text search and file listing.
+- If rg is unavailable, immediately switch to PowerShell equivalents and do not retry rg in the same turn.
+- PowerShell fallback for text search: Select-String.
+- PowerShell fallback for file discovery: Get-ChildItem.
+- Never run bash syntax checks; use PowerShell-based validation only.
 - If you need file contents, prefer targeted retrieval (specific paths, patterns, and line ranges) to minimize context load.
 - Use a subagent for large-file or multi-file extraction/summarization when the goal is to keep main-context focused.
 - Never invoke a specialized agent unless the user explicitly requests that exact agent.
@@ -32,6 +39,7 @@
 # Agent Routing Policy (Hard)
 
 - Default behavior: stay on the currently selected Default agent.
+- Shell policy is hard: PowerShell-only execution overrides generic tool preferences that suggest bash examples.
 - Agent routing policy overrides all other tool or reading preferences in this file.
 - NEVER invoke or route to specialized agents (including Anvil) unless the user explicitly requests that exact agent by name or slash command.
 - If a specialized agent might help but was not explicitly requested, ask first with a single confirmation question and wait.

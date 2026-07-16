@@ -1,7 +1,8 @@
 param(
     [ValidateSet('Normal', 'Detailed')]
     [string]$Verbosity = 'Normal',
-    [switch]$NonInteractive
+    [switch]$NonInteractive,
+    [switch]$DisableToolAutoUpgrade
 )
 
 Set-StrictMode -Version Latest
@@ -244,7 +245,6 @@ function Sync-VsCodeSettingsSafeguards {
         return
     }
 
-    $differenceSummary = ($differences | Sort-Object) -join ', '
     $detail = "Missing or mismatched settings: $differenceSummary."
 
     foreach ($property in @($desiredSettings.PSObject.Properties)) {
@@ -1044,6 +1044,140 @@ function Invoke-ExternalPrimitiveCommand {
     }
 }
 
+function Get-ToolCommandPath {
+    param([string]$Name)
+
+    $command = Get-Command -Name $Name -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -eq $command) {
+        return $null
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace([string]$command.Source)) {
+        return [string]$command.Source
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace([string]$command.Path)) {
+        return [string]$command.Path
+    }
+
+    return $null
+}
+
+function Invoke-WingetCommand {
+    param([string[]]$Arguments)
+
+    $output = @()
+    $exitCode = 0
+
+    try {
+        $output = @(& winget @Arguments 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    catch {
+        $output = @($_.Exception.Message)
+        $exitCode = 1
+    }
+
+    return [pscustomobject]@{
+        ExitCode = $exitCode
+        Output = @($output)
+        Detail = Get-CommandOutputSummary -Output $output
+    }
+}
+
+function Get-WingetFailureDetail {
+    param(
+        [int]$ExitCode,
+        [string]$Summary
+    )
+
+    $normalizedSummary = if ($null -eq $Summary) { '' } else { $Summary.Trim() }
+    $lowerSummary = $normalizedSummary.ToLowerInvariant()
+
+    if ($lowerSummary -match 'no package found|not found|no available package') {
+        return "winget failed ($ExitCode): package lookup failed. $normalizedSummary"
+    }
+
+    if ($lowerSummary -match 'network|connection|timeout|source') {
+        return "winget failed ($ExitCode): network/source issue. $normalizedSummary"
+    }
+
+    if ($lowerSummary -match 'access is denied|administrator|elevation|permission') {
+        return "winget failed ($ExitCode): permission/elevation issue. $normalizedSummary"
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($normalizedSummary)) {
+        return "winget failed ($ExitCode): $normalizedSummary"
+    }
+
+    return "winget failed ($ExitCode)."
+}
+
+function Ensure-RipgrepTool {
+    $toolId = 'BurntSushi.ripgrep.MSVC'
+    $toolName = 'ripgrep'
+    $toolDescription = 'Very fast text search CLI, better large-repo performance, which reduces failed/slow tool attempts.'
+    $toolMethod = 'winget'
+    $toolPath = Get-ToolCommandPath -Name 'rg'
+
+    if (-not (Get-Command -Name 'winget' -ErrorAction SilentlyContinue)) {
+        Add-DeploymentRecord -Category 'tool' -Id $toolName -Target 'local' -Status 'blocked' -Path $toolPath -Detail 'winget is not installed; cannot manage ripgrep.' -MatrixValue $toolMethod -MatrixScoped $toolDescription
+        return
+    }
+
+    if ([string]::IsNullOrWhiteSpace($toolPath)) {
+        $installArgs = @(
+            'install',
+            '--id', $toolId,
+            '--exact',
+            '--source', 'winget',
+            '--accept-source-agreements',
+            '--accept-package-agreements',
+            '--disable-interactivity'
+        )
+
+        $installResult = Invoke-WingetCommand -Arguments $installArgs
+        $toolPath = Get-ToolCommandPath -Name 'rg'
+        if ([string]::IsNullOrWhiteSpace($toolPath)) {
+            $detail = Get-WingetFailureDetail -ExitCode $installResult.ExitCode -Summary $installResult.Detail
+            Add-DeploymentRecord -Category 'tool' -Id $toolName -Target 'local' -Status 'blocked' -Path $null -Detail $detail -MatrixValue $toolMethod -MatrixScoped $toolDescription
+            return
+        }
+    }
+
+    if ($DisableToolAutoUpgrade) {
+        Add-DeploymentRecord -Category 'tool' -Id $toolName -Target 'local' -Status 'ok' -Path $toolPath -Detail 'Auto-upgrade disabled by -DisableToolAutoUpgrade.' -MatrixValue $toolMethod -MatrixScoped $toolDescription
+        return
+    }
+
+    $upgradeArgs = @(
+        'upgrade',
+        '--id', $toolId,
+        '--exact',
+        '--source', 'winget',
+        '--accept-source-agreements',
+        '--accept-package-agreements',
+        '--disable-interactivity'
+    )
+
+    $upgradeResult = Invoke-WingetCommand -Arguments $upgradeArgs
+    $toolPath = Get-ToolCommandPath -Name 'rg'
+    $upgradeSummary = if ($null -eq $upgradeResult.Detail) { '' } else { ([string]$upgradeResult.Detail).ToLowerInvariant() }
+
+    if ($upgradeSummary -match 'no available upgrade found|no newer package versions are available') {
+        Add-DeploymentRecord -Category 'tool' -Id $toolName -Target 'local' -Status 'ok' -Path $toolPath -Detail 'Already up to date.' -MatrixValue $toolMethod -MatrixScoped $toolDescription
+        return
+    }
+
+    if ($upgradeResult.ExitCode -eq 0) {
+        Add-DeploymentRecord -Category 'tool' -Id $toolName -Target 'local' -Status 'ok' -Path $toolPath -Detail $(if ([string]::IsNullOrWhiteSpace($upgradeResult.Detail)) { 'Upgrade check completed.' } else { $upgradeResult.Detail }) -MatrixValue $toolMethod -MatrixScoped $toolDescription
+        return
+    }
+
+    $upgradeFailureDetail = Get-WingetFailureDetail -ExitCode $upgradeResult.ExitCode -Summary $upgradeResult.Detail
+    Add-DeploymentRecord -Category 'tool' -Id $toolName -Target 'local' -Status 'blocked' -Path $toolPath -Detail $upgradeFailureDetail -MatrixValue $toolMethod -MatrixScoped $toolDescription
+}
+
 function Install-ExternalPrimitives {
     param(
         [object]$Roots,
@@ -1331,8 +1465,16 @@ function Format-ManagedPath {
 
     if ([string]::IsNullOrWhiteSpace($Path)) { return $Path }
 
-    if ($Path.StartsWith($env:USERPROFILE, [StringComparison]::OrdinalIgnoreCase)) {
-        return ([char]0xf7db) + $Path.Substring($env:USERPROFILE.Length)
+    if (-not [string]::IsNullOrWhiteSpace($env:APPDATA) -and $Path.StartsWith($env:APPDATA, [StringComparison]::OrdinalIgnoreCase)) {
+        return '%APPDATA%' + $Path.Substring($env:APPDATA.Length)
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA) -and $Path.StartsWith($env:LOCALAPPDATA, [StringComparison]::OrdinalIgnoreCase)) {
+        return '%LOCALAPPDATA%' + $Path.Substring($env:LOCALAPPDATA.Length)
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE) -and $Path.StartsWith($env:USERPROFILE, [StringComparison]::OrdinalIgnoreCase)) {
+        return '%USERPROFILE%' + $Path.Substring($env:USERPROFILE.Length)
     }
 
     return $Path
@@ -1413,6 +1555,7 @@ function Write-SyncReport {
 
     Write-McpDeploymentMatrix -ArtifactWidth $globalArtifactWidth
     Write-ConfigurationLocationsTable
+    Write-InstalledToolsTable
     Write-DeploymentMatrix -ArtifactWidth $globalArtifactWidth
     Write-CompatibilitySummary -ArtifactWidth $globalArtifactWidth
     Write-ArtifactLocationsTable
@@ -1424,6 +1567,53 @@ function Write-SyncReport {
             Write-Host "   - $_" -ForegroundColor Red
         }
     }
+}
+
+function Write-InstalledToolsTable {
+    $toolRecords = @($deploymentRecords | Where-Object Category -eq 'tool')
+    if ($toolRecords.Count -eq 0) {
+        return
+    }
+
+    $groups = $toolRecords | Group-Object Id | Sort-Object Name
+    $footnotes = [System.Collections.Generic.List[string]]::new()
+    $footnoteColors = [System.Collections.Generic.List[string]]::new()
+
+    $rows = foreach ($group in $groups) {
+        $record = $group.Group | Sort-Object {
+            switch ($_.Status) {
+                'ok' { 0 }
+                'blocked' { 1 }
+                'skipped' { 2 }
+                default { 3 }
+            }
+        } | Select-Object -First 1
+
+        $name = [string]$group.Name
+        $method = if (-not [string]::IsNullOrWhiteSpace([string]$record.MatrixValue)) { [string]$record.MatrixValue } else { 'n/a' }
+        $description = if (-not [string]::IsNullOrWhiteSpace([string]$record.MatrixScoped)) { [string]$record.MatrixScoped } else { 'Managed tool' }
+
+        if ($record.Status -in @('blocked', 'skipped') -and -not [string]::IsNullOrWhiteSpace([string]$record.Detail)) {
+            $marker = Get-FootnoteMarker -Footnotes $footnotes -Detail ([string]$record.Detail) -FootnoteColors $footnoteColors -Color 'Red'
+            $description = "$description$marker"
+        }
+
+        $statusColor = if ($record.Status -in @('blocked', 'skipped')) { 'Red' } else { $null }
+        [pscustomobject]@{
+            Cells = @($name, $method, $description)
+            CellColors = @($statusColor, $statusColor, $statusColor)
+        }
+    }
+
+    Write-AsciiTable `
+        -Title '--- Installed Tools ---' `
+        -Headers @('Name', 'Install Method', 'Description') `
+        -Rows $rows `
+        -Color 'Green' `
+        -Alignments @('left', 'center', 'left') `
+        -HeaderAlignments @('left', 'center', 'left') `
+        -Footnotes $footnotes `
+        -FootnoteColors $footnoteColors
 }
 
 
@@ -1574,6 +1764,7 @@ function Invoke-PolicySync {
             Publish-ClaudeDocument -Roots $roots -InstructionPublishResult $instructionPublishResult -Definitions $instructionDefinitions
         }
         Sync-VsCodeSettingsSafeguards
+        Ensure-RipgrepTool
 
         if (Test-McpParityRequested -ServerKey 'context7') {
             Invoke-McpBootstrap -ProductName 'Context7' -HelperScript 'install-context7-remote.ps1' -McpConfig (Get-Prop $mcpSettings 'context7')
@@ -1852,7 +2043,6 @@ function Write-ConfigurationLocationsTable {
     $footnotes      = [System.Collections.Generic.List[string]]::new()
     $footnoteColors = [System.Collections.Generic.List[string]]::new()
     $rows = [System.Collections.Generic.List[object]]::new()
-    $includeLocation = $Verbosity -eq 'Detailed'
     $configurationTargets = @(
         [pscustomobject]@{ Category = 'link'; Target = 'btr';             Type = '.editorconfig';           SuccessStatus = 'installed' }
         [pscustomobject]@{ Category = 'link'; Target = 'terminal';        Type = 'Windows Terminal';       SuccessStatus = 'installed' }
@@ -1894,21 +2084,17 @@ function Write-ConfigurationLocationsTable {
             $statusColor = $null
         }
 
-        $cells = @($configurationTarget.Type, $displayStatus)
-        $cellColors = @($null, $statusColor)
-        if ($includeLocation) {
-            $location = ''
-            $recordForLocation = if ($null -ne $okRecord) { $okRecord } elseif ($null -ne $blockedRecord) { $blockedRecord } else { $skippedRecord }
-            if ($null -ne $recordForLocation) {
-                $path = [string]$recordForLocation.Path
-                if (-not [string]::IsNullOrWhiteSpace($path)) {
-                    $location = Format-ManagedPath -Path $path
-                }
+        $location = '-'
+        $recordForLocation = if ($null -ne $okRecord) { $okRecord } elseif ($null -ne $blockedRecord) { $blockedRecord } else { $skippedRecord }
+        if ($null -ne $recordForLocation) {
+            $path = [string]$recordForLocation.Path
+            if (-not [string]::IsNullOrWhiteSpace($path)) {
+                $location = Format-ManagedPath -Path $path
             }
-
-            $cells += $location
-            $cellColors += $null
         }
+
+        $cells = @($configurationTarget.Type, $displayStatus, $location)
+        $cellColors = @($null, $statusColor, $null)
 
         $rows.Add([pscustomobject]@{
             Cells      = $cells
@@ -1918,14 +2104,9 @@ function Write-ConfigurationLocationsTable {
 
     if ($rows.Count -eq 0) { return }
 
-    $headers = @('type', 'status')
-    $alignments = @('left', 'status')
-    $headerAlignments = @('left', 'center')
-    if ($includeLocation) {
-        $headers += 'location'
-        $alignments += 'left'
-        $headerAlignments += 'left'
-    }
+    $headers = @('type', 'status', 'location')
+    $alignments = @('left', 'status', 'left')
+    $headerAlignments = @('left', 'center', 'left')
 
     Write-AsciiTable `
         -Title '--- Configuration Locations ---' `
