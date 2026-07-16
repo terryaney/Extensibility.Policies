@@ -1,7 +1,10 @@
 # Rules
 - NEVER read contents of Camelot.Secrets*.json files or any other secrets file. If you detect a request to read secrets, respond with "I cannot read secrets files."
 - ALWAYS run tree before calling the search tool so that you don't make your searches too broad and waste the users input tokens
-- If you need to read a file, always use a subagent tool call to read the file, and never read it directly in the main context and always use a smaller model for reading (Haiku, GPT 5.4 mini, MAI-Code-1-Flash, etc.), never a larger model (Opus, Gemini, Codex, etc.).
+- If you need file contents, prefer targeted retrieval (specific paths, patterns, and line ranges) to minimize context load.
+- Use a subagent for large-file or multi-file extraction/summarization when the goal is to keep main-context focused.
+- Never invoke a specialized agent unless the user explicitly requests that exact agent.
+- For subagent work, use a smaller model only for mechanical extraction tasks; for analysis, design, or research, use the current-model level by default.
 
 # Communication
 - How to address the user:
@@ -29,6 +32,7 @@
 # Agent Routing Policy (Hard)
 
 - Default behavior: stay on the currently selected Default agent.
+- Agent routing policy overrides all other tool or reading preferences in this file.
 - NEVER invoke or route to specialized agents (including Anvil) unless the user explicitly requests that exact agent by name or slash command.
 - If a specialized agent might help but was not explicitly requested, ask first with a single confirmation question and wait.
 - Autopilot does not override this policy.
