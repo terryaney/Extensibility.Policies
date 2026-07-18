@@ -1,406 +1,123 @@
 # Development Policies
 
-To ensure all developers use the same rules, we maintain a single source of truth under git source control management.  This folder contains shared development policies used across all local .NET and source controlled projects. These policies ensure consistent formatting, coding standards, and dependency management across all repositories.
+Shared development policies for all BTR/KAT projects. One repository, one sync command — every developer gets the same coding standards, AI agents, skills, instructions, and tool configurations across VS Code, Copilot CLI, and Claude.
 
-NOTE:
+## Conduent LLM Models
 
-Edit only the files in `C:\BTR\Extensibility\Policies\`. All projects immediately inherit the changes. No need to update or copy files into individual repos.
+The following models are currently enabled for our organization. Recommendations by priority:
 
-Because these configuration files are either hard coded locations or only discovered by walking upward from the project directory, every BTR/KAT project picks up the shared rules by default. The update script renders canonical AI content into client-specific formats, then installs only KAT-managed copied files into the detected destination folders.
+> You can also just ask Copilot Chat "what model should I use for X?" — it sees the available models and knows their strengths from its own training data.
 
-Externally managed primitives are declared in `AI\external.primitives.jsonc`. `update.ps1` executes the listed external install command for the configured client when enabled, and removes the installed external skill from that client's known global path when `enabled` is `false`.
+**Planning and Multi-Project Research**
+- **GPT-5.5** — Strongest advanced reasoning and broad contextual understanding for mapping architectures across interdependent projects.
+- Claude Opus 4.6 — Excellent for highly structural, nuanced planning and documentation-heavy research.
+
+**Frontend Design and Coding**
+- **Claude Sonnet 4.6** — Industry gold standard for frontend. Exceptional grasp of visual layout, component architecture, CSS/Tailwind, and modern UX patterns.
+- GPT-5.5 — Highly competent, but Sonnet generally outputs cleaner, more modern frontend components.
+
+**Implementation of Complex Plans**
+- **GPT-5.3-Codex** — Purpose-built for code generation. Fast, precise output when translating a well-defined plan into code.
+- Claude Opus 4.6 — Better when implementation requires ongoing judgment calls or the plan is loosely defined.
+
+**Everyday Coding** (multi-file context, < 60 lines output)
+- **GPT-5.3-Codex** — Optimized for code. Fast, precise output for typical tasks where you read 6-7 files to write a short function.
+- GPT-5.4 — Strong general-purpose coder. Good balance of reasoning and speed.
+- Claude Haiku 4.5 — Fastest response times for simple, well-scoped tasks.
+
+> **Gemini 2.5 Pro** is also available. Its massive context window shines when feeding in genuinely large codebases, but for typical multi-file tasks every pinned model handles the context fine.
 
 ## Installation
 
-1. Clone repository to your local machine:
-  `git clone https://tfs.acsgs.com/tfs/PDSI/HRS2/_git/HRS%20BTR%20-%20extensibility.policies C:\BTR\Extensibility\Policies`
-1. Run the following command in Terminal:
-  `C:\BTR\Extensibility\Policies\scripts\update.ps1`
-
-### MCP Servers
-
-`update.ps1` also bootstraps MCP servers — **Context7**, **GitHub**, and **KatLedger** — but only the ones that canonical agent tool metadata actually requests. Each runs through its own helper in `scripts\`, and each is best-effort: **there are no hard failures.** If a prerequisite (API key, PAT, detected client) is missing, the helper reports the gap, prints any setup instructions, and **skips** that server or client rather than aborting the run. Clients are only configured when detected as installed; an absent client is reported as `no-client` and skipped. Every helper supports a `-WhatIf` preview that makes no file writes.
-
-Server-specific details:
-
-- **Context7** (`install-context7-remote.ps1`) — configures VS Code, Copilot CLI, and Claude for the remote Context7 HTTP endpoint (converting existing local `stdio` entries). Requires `CONTEXT7_API_KEY`; when missing it prints setup instructions and skips. Set it with:
-  `[Environment]::SetEnvironmentVariable("CONTEXT7_API_KEY", "<your-key>", "User")`
-- **GitHub** (`install-github-remote.ps1`) — enforces remote GitHub MCP where possible: VS Code → `https://api.githubcopilot.com/mcp/`, Copilot CLI → non-readonly remote override (`github-mcp-server`), Claude → remote-first while preserving an existing local Docker fallback. Uses `GITHUB_TOKEN` (PAT) when present, otherwise best-effort host OAuth. When PAT vars are missing it prints PAT setup instructions, warns that auth is still required, and tells you to set `GITHUB_TOKEN` in User scope.
-- **KatLedger** (`install-katledger.ps1`) — downloads the configured release asset from `terryaney/Mcp.KatLedger` into `%USERPROFILE%\.kat\KatLedger\`, points client MCP configs at `KatLedger.exe`, and keeps the DB at `%USERPROFILE%\.kat\KatLedger\KatLedger.db`.
-
-Preview any helper without writing files, e.g.:
-
-`C:\BTR\Extensibility\Policies\scripts\install-context7-remote.ps1 -WhatIf`
-
-Once you've installed this once, the `kat-policies` skill will be available in your Copilot and Claude chats.  Simply ask to "update KAT policies" and the agent will pull the latest files and run the script automatically.
-
-## Quick Reference
-
-| File | Description |
-|------|-------------|
-| `.editorconfig` | Defines consistent coding styles across editors and IDEs (Visual Studio, VS Code, Rider, etc.).|
-| `/AI` | Canonical source for agents, instructions, skills, and per-client metadata rendered into Copilot and Claude destinations. |
-| `/AI/external.primitives.jsonc` | Install catalog for external primitives keyed by id, with a single target client, a root `enabled` boolean, and the install `command`. |
-| `/Terminal` | Provides consistent Terminal settings for Windows Terminal. |
-
-## AI Layout
-
-Canonical AI content lives under `/AI` and is authored once, then rendered into client-specific formats by `scripts/update.ps1`.
-
-### Canonical Source Tree
-
-```text
-/AI/
-  external.primitives.jsonc
-  agents/
-    [group/]*
-      <agent-folder>/
-        body.md
-        meta.jsonc
-  instructions/
-    <id>/
-      body.md
-      meta.jsonc
-  skills/
-    <id>/
-      SKILL.md
-      meta.jsonc
-      commands/
-      references/
-      templates/
-/scripts/
-  update.ps1
-  install-context7-remote.ps1
-  install-github-remote.ps1
-  install-katledger.ps1
-  Kat.Policy.Mcp.psm1
+```powershell
+git clone https://tfs.acsgs.com/tfs/PDSI/HRS2/_git/HRS%20BTR%20-%20extensibility.policies C:\BTR\Extensibility\Policies
+C:\BTR\Extensibility\Policies\scripts\update.ps1
 ```
+
+### Refresh Policies
+
+When policy files are updated, re-sync to pick up the changes. Two options:
+
+- **From chat** — ask to "update KAT policies" in Copilot or Claude. The **kat-policies** skill pulls the latest files and re-runs the sync automatically.
+- **From terminal** — saves AI tokens. Pull and re-run the script directly:
+
+  ```powershell
+  cd C:\BTR\Extensibility\Policies; git pull; .\scripts\update.ps1
+  ```
+
+## What Gets Installed
+
+The sync script detects which clients are installed (VS Code, Copilot CLI, Claude) and publishes only to those targets. Undetected clients are skipped, not failed.
 
 ### Agents
 
-Each canonical agent lives in a folder somewhere under `/AI/agents/`.
-
-- `body.md` is the shared prompt body.
-- `meta.jsonc` uses the shared metadata shape plus canonical `agents.*` fields such as `agents.model`, `agents.tools`, `agents.userInvocable`, `agents.subAgents`, and `agents.handoffs`.
-- `agents.model` is the VS Code Copilot model display name. Copilot CLI and Claude output map from that canonical value through `AI\skills\kat-policies\meta.jsonc`.
-- Canonical metadata is VS Code Copilot-centric. Claude output is rendered from the same canonical fields instead of being authored as a separate source format.
-- Grouping folders are allowed. Policy sync walks `AI\agents` recursively and treats the first folder containing both `body.md` and `meta.jsonc` (or `meta.json`) as the canonical agent directory.
-- Published agent naming still comes from `meta.jsonc.id` (with the existing leaf-folder fallback when `id` is omitted), so source nesting does not change the generated output filename.
+| Name | Description |
+|------|-------------|
+| Anvil | Evidence-first coding agent. Verifies before presenting. Attacks its own output. Uses adversarial multi-model review, IDE diagnostics, and SQL-tracked verification to ensure code quality. |
+| KatApp Assistant | Expert assistant for KatApp runtime and KAML view development. Answers questions about directives, state, KatApp client APIs, RBLe result consumption in views, and petite-vue integration. |
+| Nexgen Assistant | Expert assistant for Nexgen server-side BRD and CalcEngine integration: BRD structure, result-tab exports, API DataSource mappings, xDS data model flow, command processing, and cacheRefreshKeys. |
 
 ### Instructions
 
-Each canonical instruction lives in `/AI/instructions/<id>/`.
-
-- `body.md` is the shared instruction content.
-- `meta.jsonc` uses the shared metadata shape plus `instructions.scope`.
-- `instructions.scope` is optional. If it is omitted, the instruction is global. If it is present as an empty array, it is also global. A non-empty array means path-scoped output. Copilot `applyTo` is derived from this scope during rendering.
+| Name | Description |
+|------|-------------|
+| KAT Shared Instruction | Shared KAT communication, code, and .NET guidance rendered for Copilot and Claude. |
+| Nexgen Instructions | Nexgen/LWC instructions rendered for Copilot and Claude. |
+| Tally Instructions | Spending instructions when working with Tally and new bank exports. |
 
 ### Skills
 
-Each canonical skill lives in `/AI/skills/<id>/`.
+| Name | Description |
+|------|-------------|
+| frontend-design | Create distinctive, production-grade frontend interfaces with high design quality. |
+| kat-caveman | Ultra-compressed communication mode. Cuts token usage ~75% by dropping filler, articles, and pleasantries. |
+| kat-grill-me | Grill the user relentlessly about a plan or design before building. |
+| kat-handoff | Compact the current conversation into a handoff document for another agent to pick up. |
+| kat-policies | Update all AI features (commands, skills, agents, etc.) for Claude and Copilot. |
+| kat-review | Two-axis code review (Standards + Spec) since a fixed point. Runs both reviews in parallel. |
+| primitive-evaluator | Evaluate and improve existing prompt primitives such as skills, agents, and instructions. |
+| visual-explainer | Generate self-contained HTML pages that visually explain systems, code changes, plans, and data. *Plus child command skills.* |
 
-- `SKILL.md` contains the shared body only.
-- `meta.jsonc` uses the shared metadata shape plus skill-specific fields such as `license`, `compatibility`, `metadata`, and `skills.excludeCommands.copilot`.
-- Supporting files remain beside the skill and are installed into published skill directories as regular folders containing KAT-managed copied files.
-- Skills may also include `agents/meta.jsonc` under the skill folder. Claude keeps those helper files bundled inside the published skill, while Copilot can synthesize real non-user-invocable helper agents named `<skill>-<helper>` from that grouped metadata.
-- `commands/*.md` are canonical command workflow files. If present, they are automatically nested in `~/.claude/skills/{id}/commands/` for Claude and rendered as standalone child skills for Copilot with a filesystem-safe folder id `<skill>-<command>` and a published skill name `<skill>.<command>`.
-- `AI/external.primitives.jsonc` is separate from canonical skills. Each external entry targets one client with a root `client` property and a root `enabled` boolean. When `enabled` is `true`, the updater executes the listed `command`. When `enabled` is `false`, the updater removes the installed external skill from that client's known global install path if it exists.
+### Tools
 
-### Rendered Destinations
+| Name | Description |
+|------|-------------|
+| ripgrep (`rg`) | Very fast text search CLI. Installed and auto-upgraded via winget. AI agents rely on it for codebase navigation. |
 
-The renderer currently targets these install locations:
+### MCP Servers
 
-| Canonical Type | VS Code | Copilot CLI | Claude |
-|------|------|------|------|
-| Agents | `%APPDATA%/Code/User/prompts/*.agent.md`<sup>1</sup> | `~/.copilot/agents/*.agent.md`<sup>1</sup> | `~/.claude/agents/*.md`<sup>1</sup> |
-| Instructions | `%APPDATA%/Code/User/instructions/*.instructions.md`<sup>1</sup> | `~/.copilot/instructions/*.instructions.md`<sup>1</sup> | `~/.claude/instructions/*.md` and generated `~/.claude/CLAUDE.md` imports for global instructions, or `~/.claude/rules/*.md`<sup>1</sup> for path-scoped instructions |
-| Skills | n/a | `~/.copilot/skills/<id>/`<sup>2</sup> | `~/.claude/skills/<id>/`<sup>2</sup> |
+| Name | Description |
+|------|-------------|
+| Context7 | Library and framework documentation lookups. Requires `CONTEXT7_API_KEY`. |
+| GitHub | Repository operations — issues, PRs, code search. Uses host OAuth or `GITHUB_TOKEN`. |
+| KatLedger | Session ledger database for tracking AI usage (VS Code only). |
 
-<sup>1</sup> When `enabled.repositories` includes repo-local targets, the equivalent repo paths are also published for supported clients: `.github/agents/*.agent.md`, `.claude/agents/*.md`, `.github/instructions/*.instructions.md`, and either `.claude/instructions/*.md` plus generated `.claude/CLAUDE.md` imports for global instructions or `.claude/rules/*.md` for path-scoped instructions.
-<sup>2</sup> When `enabled.repositories` includes repo-local targets for a skill, Copilot skill output is published under `.github/skills/<id>/` and Claude skill output under `.claude/skills/<id>/`. If a canonical skill has a `commands/*.md` folder, Copilot child skills are also published under `skills/<parent>.<command>/`, matching the published skill name `<parent>.<command>`, and Claude command markdown is nested under `skills/<parent>/commands/`.
+Note: MCP servers are bootstrapped best-effort — if a prerequisite is missing, the sync reports the gap and continues.
 
-External installable skills use provider-native locations instead of the canonical renderer paths above. With the current `skills-cli` behavior, GitHub Copilot installs land under `.agents/skills/` for project scope and `~/.agents/skills/` for global scope, while Claude installs use `.claude/skills/` or `~/.claude/skills/`. KAT-rendered local skills still use the renderer-managed `.github/skills/` and `~/.copilot/skills/` paths.
+### Configuration
 
-## Renderer Notes
+| Name | Description |
+|------|-------------|
+| .editorconfig | Consistent coding styles across Visual Studio, VS Code, and Rider. Deployed to `C:\BTR\`. |
+| Windows Terminal settings | Shared Terminal appearance and profile configuration. |
+| VS Code chat settings | Reduces duplicate context noise and enables chat tooling features. Does **not** force `chat.permissions.default`. |
 
-The update script renders all client artifacts from the canonical `/AI` source. This section is the primary reviewer handoff for the renderer and contains the target metadata reference.
+### Compatibility Notes
 
-### Purpose
+The sync finishes with a deployment matrix and compatibility summary. Some Copilot orchestration features (subagents, handoffs) have no Claude equivalent and are intentionally omitted — the summary calls these out so you know what is and isn't portable across clients.
 
-The renderer is trying to accomplish four things:
+## User-Restricted Items
 
-1. Keep one canonical source of truth for agents, instructions, skills, and terminal policy content.
-1. Render each artifact into the format expected by each client instead of authoring duplicate files by hand.
-1. Take ownership only of KAT-managed outputs and avoid deleting unrelated user files.
-1. Surface client compatibility gaps explicitly so missing parity is visible during each sync.
+Some items are restricted to specific users via `applyForUsers` in their metadata. If an item you need is excluded, ask the policy maintainer to add your username (or machine user ID) to the `applyForUsers` array in the relevant `meta.jsonc` or `external.primitives.jsonc` entry, then re-sync.
 
-### Supported Process
+## Developer Documentation
 
-`scripts/update.ps1` runs this workflow:
+Detailed documentation for working on the policies themselves lives in [.vscode/Documentation/](.vscode/Documentation/):
 
-1. Discover the install roots for BTR configurations, VS Code, Copilot CLI, Claude, and Windows Terminal.
-1. Scan known managed roots and remove only KAT-managed files and directories before republishing.
-1. Parse canonical `meta.jsonc` files, including line comments.
-1. Render target-specific frontmatter and write the final published files.
-1. Install supporting skill files as copied managed files beside the rendered `SKILL.md` files.
-1. Generate `~/.claude/CLAUDE.md` from the enabled instruction imports.
-1. Deploy Terminal\settings.json to local user install folder.
-1. Deploy `.editorconfig` to `C:\BTR\.editorconfig`.
-1. Mark rendered files as read-only and stamp managed plain files with a `CreatedBy=KAT` alternate data stream when possible.
-1. Print a deployment matrix plus compatibility summary after each run.
-1. When Context7 is requested by canonical agent tool metadata, invoke the remote Context7 bootstrap helper to ensure VS Code, Copilot CLI, and Claude Context7 MCP entries are set to remote HTTP (converting existing local `stdio` entries where present).
-1. When GitHub tools are requested by canonical agent tool metadata, invoke the GitHub bootstrap helper to enforce remote GitHub MCP where possible (VS Code + Copilot CLI non-readonly override) and configure Claude remote-first with local Docker fallback when PAT-based remote auth is unavailable.
-
-### Tool Confirmation Notes
-
-KAT Policies can write settings that reduce duplicate context noise and lower approval friction, but it should not force a global default permission mode for every chat. The supported approval levers are workspace trust, the chat session permission level, `chat.permissions.default`, and per-tool approvals in the chat UI. The managed VS Code safeguard payload keeps the duplicate-context settings plus tool-enablement settings such as `workbench.browser.enableChatTools` and `workbench.browser.openLocalhostLinks`, but it no longer sets `chat.permissions.default` in user settings. If you want a repo-specific default, set it in that repository's `.vscode/settings.json` after confirming your VS Code build honors that setting at workspace scope. Some shell, file-write, or repository-changing actions can still prompt because of platform or product security policy.
-
-### Ownership And Cleanup Model
-
-The cleanup rules matter because the renderer is intentionally conservative.
-
-- Managed plain files are normally recognized by the `CreatedBy=KAT` alternate data stream.
-- Legacy managed symlinks are still recognized when their target points back into the Policies repository so older installs can be cleaned up.
-- Managed directories are reusable only when all of their contents are managed.
-- Broken legacy managed symlinks are still removed correctly during cleanup.
-- Repo-targeted outputs are treated as authoritative current targets for the exact paths derived from current metadata, so they can be replaced even if the KAT marker is temporarily missing.
-- Repo-local cleanup now collapses empty `.github` and `.claude` ancestor folders back toward configured repository roots.
-- If an `enabled.repositories` entry is removed or changed to a different repository, cleanup of the previously targeted repository is manual because that older target path is no longer discoverable from current metadata.
-- Published skill target folders are reused only when any remaining contents are still KAT-managed; if unmanaged content remains, that specific skill publish is blocked until the folder is cleaned up manually.
-
-### Metadata Reference
-
-Use one shared shape across all `meta.jsonc` files. Put the common properties first, then add artifact-specific prefixed sections so applicability is obvious.
-
-The target schema also includes shared mappings and MCP metadata in `AI/skills/kat-policies/meta.jsonc`. Keep those sections high-level and reusable so individual artifact metadata can stay focused on canonical intent.
-
-| Field | Type | Applies To | Notes |
-|------|------|------|------|
-| `id` | string | agents, instructions, skills | Canonical id and base filename or folder name. |
-| `name` | string | agents, instructions, skills | Rendered display name. |
-| `description` | string | agents, instructions, skills | Rendered summary or description. |
-| `enabled.copilot` | bool | agents, instructions, skills | Publishes all Copilot outputs (both VS Code and Copilot CLI) for that artifact. If `true`, overrides any sub-client properties. Defaults to `true`. |
-| `enabled.copilot.vscode` | bool | agents, instructions, skills | Optional. Publishes only the VS Code output when `enabled.copilot` is `false` or absent. Ignored when `enabled.copilot` is `true`. Defaults to `false` when `enabled.copilot` is explicitly `false`; otherwise inherits the `enabled.copilot` default. |
-| `enabled.copilot.cli` | bool | agents, instructions, skills | Optional. Publishes only the Copilot CLI output when `enabled.copilot` is `false` or absent. Ignored when `enabled.copilot` is `true`. Defaults to `false` when `enabled.copilot` is explicitly `false`; otherwise inherits the `enabled.copilot` default. |
-| `enabled.claude` | bool | agents, instructions, skills | Publishes Claude outputs for that artifact. Defaults to `true`. |
-| `enabled.repositories` | string[] | agents, instructions, skills | Optional repo-local publish roots. When omitted, publishing is user-level only. |
-| `agents.model` | string | agents | Canonical VS Code Copilot model display name. Copilot CLI and Claude output map from this value through `AI\skills\kat-policies\meta.jsonc`. |
-| `agents.tools` | string[] | agents | Canonical tool array. Shared client translations belong in `AI\skills\kat-policies\meta.jsonc`; keep artifact metadata focused on canonical tool intent. |
-| `agents.userInvocable` | bool | agents | Canonical user-invocable flag for Copilot agent rendering. Claude agent output has no direct equivalent. |
-| `agents.subAgents` | array | agents | Canonical subagent/orchestration list for Copilot-aware agent composition. Unsupported clients omit it. |
-| `agents.handoffs` | object[] | agents | Canonical handoff metadata for orchestrator-style agents. Unsupported clients omit it. |
-| `instructions.scope` | string[] | instructions | Optional. Omitted or `[]` means global instruction output. A non-empty array means path-scoped output. Copilot `applyTo` is derived from this field during rendering. |
-| `license` | string | skills | Optional. Preserve it when present. |
-| `compatibility` | string | skills | Optional compatibility note rendered with the skill. |
-| `metadata` | object | skills | Optional nested metadata. Preserve it when present. |
-| `skills.excludeCommands.copilot` | string[] | skills | Optional list of canonical command basenames to skip when generating Copilot child skills. |
-| `skills.excludeItems.<client>` | string[] | skills | Optional list of top-level bundled files or folders to exclude from rendered skill output for a specific client. Supported client keys are `copilot` and `claude`. |
-| `bodyReplacements` | object | agents, instructions, skills | Optional per-client string substitutions applied after client markers are resolved. Keys are `copilot.vscode`, `copilot.cli`, `copilot` (shared skills), or `claude`. Each value is a flat object of old → new string pairs applied top-to-bottom. |
-
-`agents.handoffs[]` supports these nested fields:
-
-- `label`: handoff label shown in Copilot.
-- `agent`: target agent name.
-- `prompt`: prompt text sent to the target.
-- `send`: optional bool, defaults to `false`.
-
-Canonical artifact body content supports optional client markers for small wording differences inside shared content. Markers are stripped during publishing so each client receives only its relevant block.
-
-**Top-level client markers** — apply across the entire Copilot family or Claude:
-
-```md
-<!-- copilot:start -->
-Copilot-only text (VS Code and CLI).
-<!-- copilot:end -->
-
-<!-- claude:start -->
-Claude-only text.
-<!-- claude:end -->
-```
-
-**Sub-client markers** — narrow content to a specific Copilot target:
-
-```md
-<!-- copilot-vscode:start -->
-VS Code Copilot-only text.
-<!-- copilot-vscode:end -->
-
-<!-- copilot-cli:start -->
-Copilot CLI-only text.
-<!-- copilot-cli:end -->
-```
-
-The renderer applies the following matrix when resolving markers for each publish target:
-
-| Marker tag | VS Code | Copilot CLI | Claude |
-|---|---|---|---|
-| `copilot` | kept | kept | removed |
-| `copilot-vscode` | kept | removed | removed |
-| `copilot-cli` | removed | kept | removed |
-| `claude` | removed | removed | kept |
-
-`copilot` and `copilot-vscode`/`copilot-cli` may coexist freely. Content inside a plain `<!-- copilot:start -->` block appears in both VS Code and CLI output, while sub-client blocks let you vary the wording further within the same file.
-
-Skills deploy a single shared file read by both VS Code and Copilot CLI. Sub-client markers in skill bodies are still resolved, but since both clients read the same file, only plain `<!-- copilot:start -->` markers are meaningful in practice for skills.
-
-Copied support files can also use a code-safe line marker form when HTML comments would break the file syntax:
-
-```py
-# [kat:copilot:start]
-copilot_only = True
-# [kat:copilot:end]
-
-# [kat:claude:start]
-claude_only = True
-# [kat:claude:end]
-```
-
-### Body Replacements
-
-`meta.jsonc` supports an optional `bodyReplacements` object for client-specific string substitutions. After client markers are resolved, the renderer applies all replacements for the matching client key top-to-bottom.
-
-```jsonc
-"bodyReplacements": {
-    "copilot.vscode": {
-        "`ask_user`": "`vscode/askQuestions`",
-        "`session_store`": "`session_store_sql`"
-    },
-    "copilot.cli": {
-        "`ask_user`": "`some_cli_tool`"
-    },
-    "claude": {
-        "`ask_user`": "`AskUserQuestion`"
-    }
-}
-```
-
-Valid client keys are `copilot.vscode`, `copilot.cli`, `copilot` (shared skills), and `claude`. Each key's value is a flat object mapping old strings to new strings. Replacements are applied as plain string substitutions in the order they appear.
-
-Copied support files also support sidecar overrides when markers are not practical. A file like `run_eval.copilot.py` publishes as `run_eval.py` only for Copilot, and `run_eval.claude.py` publishes as `run_eval.py` only for Claude. When both a shared base file and a client sidecar exist, the sidecar wins for that client and the sidecar filename itself is not published.
-
-If a canonical skill has a `commands/*.md` folder, Copilot publishing also generates standalone child skill folders named `<parent>.<command>`. The folder name matches the published skill name, so a command can be invoked as `/visual-explainer.diff-review`. Copilot skill installs do not include a `commands` folder.
-
-### Target Schema Notes
-
-- `meta.jsonc` remains the canonical metadata format across agents, instructions, and skills.
-- Canonical metadata is VS Code Copilot-centric. Client-specific differences should be derived by the renderer instead of duplicated across artifact docs.
-- `AI/skills/kat-policies/meta.jsonc` is the shared place for reusable client translations, MCP settings, and mappings, including how canonical `agents.model` values are rendered for Copilot CLI and Claude.
-- Repo-local publishing is controlled by `enabled.repositories`.
-- Instructions use `instructions.scope` instead of split Claude-specific enable flags. Omitted scope and empty scope both mean global. Non-empty scope means path-scoped output.
-- Agents should use canonical schema fields `agents.model`, `agents.tools`, `agents.userInvocable`, `agents.subAgents`, and `agents.handoffs`.
-- Skills should use `skills.excludeCommands.copilot` and `skills.excludeItems.<client>` when bundled folders should not publish to every client.
-- `claude.target` is legacy-only for agents and should not be documented as a normal supported field.
-- Legacy root-level field shapes may still exist in older artifacts, but this readme documents the target schema only.
-
-## Compatibility Notes
-
-### Copilot VS Code vs Copilot CLI
-
-Both are rendered from the same canonical agent metadata, but they do not load the same artifact types.
-
-- VS Code agent output is published as `.agent.md` prompt files.
-- Copilot CLI agent output is published under `~/.copilot/agents`.
-- VS Code-only orchestration fields such as `agents.subAgents` and `agents.handoffs` are intentionally omitted from CLI output.
-- VS Code supports slash commands through prompt files and skills, not through Claude-style nested skill commands under `.claude/skills/<id>/commands/`.
-
-### Claude Agents vs Commands vs Skills
-
-Claude has a different artifact model from Copilot.
-
-- Claude agents are subagents with their own model, tools, and memory.
-- Claude commands are slash-invoked Markdown files nested in skill folders (`~/.claude/skills/<id>/commands/`). If a skill has a `commands/*.md` folder, those files are automatically nested within the published skill.
-- Claude skills are reusable capability packs under `~/.claude/skills`.
-- Claude agent frontmatter has no equivalent to Copilot `userInvocable: false`.
-- Claude skills do have invocation controls such as `user-invocable` and `disable-model-invocation`, but those are skill-level concerns, not subagent frontmatter.
-
-### Tool Mapping
-
-The renderer keeps tool mapping centralized instead of repeating client-specific details in every artifact.
-
-- Shared client translations belong in `AI/skills/kat-policies/meta.jsonc`.
-- Individual artifact metadata should stay canonical and only carry local overrides when the shared mappings are not enough.
-- When Claude parity is impossible, the script leaves a compatibility note rather than silently pretending the clients are equivalent.
-
-Current notable gaps:
-
-1. `vscode/*` tools have no native Claude equivalent.
-1. GitHub-specific Copilot tools can only be approximated with Claude `Bash` and `WebFetch` unless you add a closer GitHub integration.
-1. Copilot orchestration metadata has no native Claude frontmatter equivalent, so those fields are intentionally omitted from Claude output.
-
-### Current Compatibility Summary
-
-At the time of this update, the remaining compatibility warnings are the intentional Copilot orchestration omissions for:
-
-1. `Code.Review.GPT`
-1. `Code.Review.Orchestrator`
-1. `kat-nexgen`
-1. `Ultralight.Orchestrator`
-
-Everything else in the current summary is either explicitly mapped or intentionally published into only one client's model.
-
-## Central Package Management (CPM) for .NET
-
-> **IMPORTANT — not implemented yet.** Nothing below is wired up; it describes the intended design only. The `Directory.Packages.props` files described here have never existed in this repo.
-
-CPM works by NuGet auto-discovering the nearest file named exactly `Directory.Packages.props` while walking **up** the directory tree from each project. To give each KAT framework its own version set, the file lives at the **framework root** rather than being carried per-repo or given a framework-specific name:
-
-- `C:\BTR\Camelot\Directory.Packages.props` — versions for Camelot framework repos.
-- `C:\BTR\Evolution\Directory.Packages.props` — versions for Evolution framework repos.
-
-Because every Camelot repo lives under `C:\BTR\Camelot` and every Evolution repo under `C:\BTR\Evolution`, each project auto-discovers the correct framework file with no per-project import, and the two frameworks can pin different versions. These files would be deployed and KAT-owned (stamped with the `CreatedBy=KAT` alternate data stream, the same ownership model the renderer uses for other managed files), so they are managed centrally and should not be hand-edited in place.
-
-The framework file sets the central-management flag and declares one `PackageVersion` per package:
-
-```xml
-<Project>
-  <PropertyGroup>
-    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
-  </PropertyGroup>
-  <ItemGroup>
-    <PackageVersion Include="Serilog" Version="2.12.0" />
-    <PackageVersion Include="Microsoft.Extensions.Logging" Version="7.0.0" />
-  </ItemGroup>
-</Project>
-```
-
-### How `.csproj` Files Change
-
-With CPM on, projects reference packages with **no version** — the version comes from the framework's `Directory.Packages.props`:
-
-```xml
-<ItemGroup>
-  <PackageReference Include="Serilog" />
-  <PackageReference Include="Microsoft.Extensions.Logging" />
-</ItemGroup>
-```
-
-Specifying `Version` on a `PackageReference` while CPM is on raises **NU1008**; use the override mechanisms below instead.
-
-### Overriding Versions
-
-**A. Repo-level override (affects every project in the repo).**
-
-Add a `Directory.Packages.props` at the repo root. NuGet uses the **nearest** file and stops walking, so this repo-local file *shadows* the framework file. Import the framework file explicitly, then adjust individual versions with `Update` (re-declaring with `Include` is a duplicate-item error):
-
-```xml
-<Project>
-  <Import Project="C:\BTR\Camelot\Directory.Packages.props" />
-  <ItemGroup>
-    <PackageVersion Update="Serilog" Version="2.0.11" />
-  </ItemGroup>
-</Project>
-```
-
-This changes only Serilog for that repo and inherits all other framework versions unchanged.
-
-**B. Single-project override (inside one `.csproj`).**
-
-Use `VersionOverride` on the `PackageReference` (a plain `Version` is NU1008 under CPM):
-
-```xml
-<ItemGroup>
-  <PackageReference Include="Serilog" VersionOverride="2.0.13" />
-</ItemGroup>
-```
-
-This is the highest-precedence override and should be used sparingly.
+| Document | Contents |
+|----------|----------|
+| [Primitives.md](.vscode/Documentation/Primitives.md) | Full inventory of installed agents, instructions, skills, tools, and MCP servers. |
+| [RepoStructure.md](.vscode/Documentation/RepoStructure.md) | Repository layout, canonical source tree, and quick reference. |
+| [KatPolicies.md](.vscode/Documentation/KatPolicies.md) | Renderer workflow, rendered destinations, ownership model, and compatibility notes. |
+| [Metadata.md](.vscode/Documentation/Metadata.md) | `meta.jsonc` schema, client markers, body replacements, and shared mappings. |
+| [CentralPackageManagement.md](.vscode/Documentation/CentralPackageManagement.md) | Planned .NET CPM design (not yet implemented). |
