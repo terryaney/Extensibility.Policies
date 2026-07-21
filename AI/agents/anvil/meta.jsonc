@@ -9,8 +9,8 @@
 		"commit": "ae17066"
 	},
 	"enabled": {
-		"copilot.cli": true,
-		"copilot.vscode": true,
+		"copilot.cli": false,
+		"copilot.vscode": false,
 		"claude": false
 	},
 	"bodyReplacements": {
