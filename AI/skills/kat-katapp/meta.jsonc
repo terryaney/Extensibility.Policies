@@ -1,27 +1,9 @@
 {
 	"id": "kat-katapp",
-	"name": "KatApp Assistant",
-	"description": "Expert assistant for KatApp runtime and KAML view development. Answers questions about directives, state, KatApp client APIs, RBLe result consumption in views, and petite-vue integration.",
+	"name": "kat-katapp",
+	"description": "KatApp framework and KAML view guidance. Use when working with KatApp runtime behavior, v-ka-* directives, KatApp state, application.* APIs, RBLe result consumption in views, modal workflows, petite-vue integration, .kaml composition, or local-kaml-package files.",
 	"enabled": {
 		"copilot": true,
 		"claude": true
-	},
-	"agents": {
-		"model": "GPT-5.4 (copilot)",
-		/* Without tools all are implied */
-		"tools.off": [
-			"vscode/memory",
-			"io.github.upstash/context7/*",
-			"edit",
-			"search",
-			"web",
-			"read",
-			"todo",
-			"github/get_file_contents",
-			"github/search_code",
-			"github/get_latest_release",
-			"web/githubRepo"
-		],
-		"userInvocable": true
 	}
 }
