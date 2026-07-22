@@ -1564,9 +1564,34 @@ function Write-SyncReport {
         Write-Host '--- Manual Cleanup Required ---' -ForegroundColor Red
         Write-Host '- Delete these paths to finalize KAT Policies synchronization:' -ForegroundColor Red
         $blockedPaths | Sort-Object -Unique | ForEach-Object {
-            Write-Host "   - $_" -ForegroundColor Red
+            $reason = Get-ManualCleanupReason -Path $_
+            $suffix = if ([string]::IsNullOrWhiteSpace($reason)) { '' } else { " ($reason)" }
+            Write-Host "   - $_$suffix" -ForegroundColor Red
         }
     }
+}
+
+function Get-ManualCleanupReason {
+    param([string]$Path)
+
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Ignore
+    if ($null -eq $item) {
+        return 'path no longer exists'
+    }
+
+    if ($item.PSIsContainer -and -not ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+        if (Test-ReusableManagedDirectory -Path $Path -RepositoryRoot $repoRoot) {
+            return 'directory could not be removed automatically'
+        }
+
+        return 'directory contains files not owned by KAT Policies'
+    }
+
+    if (-not (Test-LegacyManagedItem -Item $item -RepositoryRoot $repoRoot)) {
+        return 'file is not owned by KAT Policies'
+    }
+
+    return 'path could not be removed automatically'
 }
 
 function Write-InstalledToolsTable {
@@ -2206,6 +2231,10 @@ function Remove-AlternateDataStream {
         [string]$StreamName
     )
 
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return $true
+    }
+
     if (-not ('KatNativeMethods' -as [type])) {
         Add-Type -TypeDefinition @'
 using System;
@@ -2217,20 +2246,19 @@ public static class KatNativeMethods {
 '@
     }
 
-    try {
-        $resolvedPath = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path
-        $streamPath = '\\?\' + $resolvedPath + ':' + $StreamName
-        $deleted = [KatNativeMethods]::DeleteFile($streamPath)
-        if ($deleted) {
-            return $true
-        }
+    $resolvedPath = (Resolve-Path -LiteralPath $Path -ErrorAction Ignore).Path
+    if ([string]::IsNullOrWhiteSpace($resolvedPath)) {
+        return $true
+    }
 
-        $errorCode = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
-        return $errorCode -in @(2, 3)
+    $streamPath = '\\?\' + $resolvedPath + ':' + $StreamName
+    $deleted = [KatNativeMethods]::DeleteFile($streamPath)
+    if ($deleted) {
+        return $true
     }
-    catch {
-        return $false
-    }
+
+    $errorCode = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+    return $errorCode -in @(2, 3)
 }
 
 function Get-Prop {
@@ -2451,14 +2479,9 @@ function Get-LinkTargetPath {
 function Test-KatMarker {
     param([string]$Path)
 
-    try {
-        $stream = Get-Item -LiteralPath $Path -Stream CreatedBy -ErrorAction Stop
-        if ($stream) {
-            return (Get-Content -LiteralPath $Path -Stream CreatedBy -ErrorAction SilentlyContinue) -eq 'KAT'
-        }
-    }
-    catch {
-        # No alternate stream means the path is not KAT-marked.
+    $stream = Get-Item -LiteralPath $Path -Stream CreatedBy -ErrorAction Ignore
+    if ($stream) {
+        return (Get-Content -LiteralPath $Path -Stream CreatedBy -ErrorAction Ignore) -eq 'KAT'
     }
 
     return $false
@@ -2517,7 +2540,7 @@ function Remove-KatManagedPath {
         [string]$RepositoryRoot
     )
 
-    $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Ignore
     if ($null -eq $item) {
         return $true
     }
@@ -2566,7 +2589,7 @@ function Get-LegacyManagedPaths {
             continue
         }
 
-        $item = Get-Item -LiteralPath $scanRoot -Force -ErrorAction SilentlyContinue
+        $item = Get-Item -LiteralPath $scanRoot -Force -ErrorAction Ignore
         if ($null -ne $item -and (Test-LegacyManagedItem -Item $item -RepositoryRoot $RepositoryRoot)) {
             $paths.Add($item.FullName)
         }
@@ -2614,7 +2637,7 @@ function Remove-EmptyAncestors {
         $current.StartsWith($StopAt, [StringComparison]::OrdinalIgnoreCase) -and
         $current.Length -gt $StopAt.Length) {
 
-        $item = Get-Item -LiteralPath $current -Force -ErrorAction SilentlyContinue
+        $item = Get-Item -LiteralPath $current -Force -ErrorAction Ignore
         if ($null -ne $item -and $item.PSIsContainer) {
             $hasChildren = $null -ne (Get-ChildItem -LiteralPath $current -Force -ErrorAction SilentlyContinue | Select-Object -First 1)
             if ($hasChildren) {
@@ -2650,7 +2673,7 @@ function Clear-ManagedRoot {
     }
 
     foreach ($p in ($pathsToRemove | Sort-Object Length -Descending)) {
-        $item = Get-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue
+        $item = Get-Item -LiteralPath $p -Force -ErrorAction Ignore
         if ($null -ne $item) {
             [void](Remove-KatManagedPath -Path $p -RepositoryRoot $RepositoryRoot)
         }
@@ -3574,7 +3597,7 @@ function New-ManagedDirectory {
     )
 
     if (Test-Path -LiteralPath $Path) {
-        $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+        $item = Get-Item -LiteralPath $Path -Force -ErrorAction Ignore
         if ($null -eq $item) {
             Add-BlockedPath $Path
             return $false
@@ -3688,3 +3711,4 @@ function Install-RenderedSkill {
 }
 
 Invoke-PolicySync
+$global:LASTEXITCODE = 0

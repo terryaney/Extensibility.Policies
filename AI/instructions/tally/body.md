@@ -50,6 +50,20 @@ Reference sites:
 
 7. Never suggest that the user should run a `tally` command to get information. If tally can provide relevant information, run the command yourself and present the results.
 
+## Hard gate — required before any report generation
+
+For every `tally up`, "run tally," "generate report," or equivalent request, complete Rule 8 in order. Do not run `tally up` until every filename printed by the prescribed unregistered-CSV command has been inspected and handled.
+
+A wildcard `file:` source (such as `apple-mastercard*.csv`) does not waive this gate. For every printed file, validate its column count against the matching source format and append missing trailing fields before running Tally.
+
+If the new CSV's header names or column order differ from the known-good file for that source, stop before `tally up`. Show the old and new header order and a proposed semantic field mapping.
+
+Ask the user to choose:
+1. Preferred: reorder the new CSV's columns and header into the known-good order, preserving every value and CSV quoting, so it continues to use the existing source format.
+2. Alternative: add a separately scoped data-source block with a confirmed new format.
+
+Do not take either action until the user confirms the mapping and choice. Do not modify the existing wildcard source block.
+
 8. Whenever the user says `tally up`, or an equivalent such as `run tally`, `generate report`, or `do report`, do the following **before** executing `tally up`:
    - Run this PowerShell command to find CSV files not yet registered in `settings.yaml`. Do **not** do this comparison manually or from memory:
 
