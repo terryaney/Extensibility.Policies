@@ -2,6 +2,7 @@
 	"settings": {
 		"workbench.browser.openLocalhostLinks": true,
 		"workbench.browser.enableChatTools": true,
+		"debug.hideSlowPreLaunchWarning": true,
 		"chat.agentFilesLocations": {
 			".claude/agents": false,
 			"~/.claude/agents": false,
