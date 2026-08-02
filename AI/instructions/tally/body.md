@@ -23,6 +23,11 @@ Reference sites:
 2. If the user is asking why a rule is not working, NEVER automatically change rules without first confirming.
 3. NEVER automatically generate merchant rules without confirmation.
 
+## Communication preference
+1. Keep progress updates and final answers brief by default.
+2. Do not narrate routine actions or provide audit/detail summaries unless asked.
+3. Report only: result, files changed, and any decision or blocker needing user input.
+
 ## Tally Skills
 
 All tally report generation, file registration, transaction categorization, and rule management MUST go through the appropriate skill. Do not perform these operations inline.

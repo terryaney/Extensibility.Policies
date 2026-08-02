@@ -68,15 +68,37 @@ For every unresolved `unknowns:` row, look at `nearest` in `categorization.hints
 1. **Auto-apply** — `nearest[0].score >= AUTO_APPLY_MIN_SCORE` AND `nearest[0].rules ==
    AUTO_APPLY_MAX_RULES`. That entry's `useRule` value is unambiguous (one merchant, one variant);
    apply it immediately, exactly as you would a user-filled `useRule`, without waiting to be asked.
-2. **Annotate** — `nearest[0].rules > AUTO_APPLY_MAX_RULES`, or there is no `nearest` entry at all.
-   These are the rows where deterministic matching ran out and judgment adds value. Write a short
-   guess plus context into `aiNotes`, e.g. `"Shopping / Books — likely a gift, no
-   prior-period match"`, based on the row's `priorPeriod`, `occurrences`, `amountSpread`, `refund`,
-   or a `nearest` entry that missed the bar.
-3. **Leave alone** — everything else. Don't touch `aiNotes`, don't apply anything.
+2. **Annotate** — the row is not auto-appliable AND you can say something the user cannot already
+   see. Write it into `aiNotes`. Apply the value test below before writing anything.
+3. **Leave alone** — everything else, including every row where you have nothing to add. Don't
+   touch `aiNotes`, don't apply anything.
 
 **Never auto-apply on `score` alone.** `score: 1.0` with `rules: 25` (e.g. Amazon) means the
 merchant name matched verbatim and tells you nothing about the category. Both terms, always.
+
+### The value test for `aiNotes`
+
+**A blank `aiNotes` is a good outcome. Never fill it for coverage.** The user reads this file row by
+row; a note that tells them nothing costs them attention and buries the notes that matter.
+
+Before writing, ask: *does this say anything the user could not get by reading the row and its
+hints?* If no, leave it blank.
+
+- **Never restate the hints.** `"Amazon has 25 category-specific rules; purchase details needed"` is
+  just `rules: 25` in prose. So is "no prior-period match", "seen 3 times", "this is a refund". The
+  hints file already says all of that, and the user can read it.
+- **Do write** when you bring in something the data doesn't carry: what an opaque merchant name
+  actually is (`"VIOC is Valvoline Instant Oil Change"`), a reading of the `memo`/tagging text, a
+  pattern across rows (`"ids 4, 7, 9 look like one order split across three charges"`), or a genuine
+  category guess with a reason that isn't already on screen.
+- **When the answer isn't in the data, say nothing.** Amazon order IDs are opaque — no amount of
+  reasoning reveals what was bought. That is not a row awaiting a better guess; it is a row only the
+  user can answer.
+- **Report the pattern once in chat, not N times in the file.** "24 Amazon rows — the category
+  depends on the item and isn't in the data; tell me what they were" is useful once and noise
+  twenty-four times.
+
+If a pass produces no notes at all, that is a correct result — say so and move on.
 
 Run this pass automatically after reading a freshly generated file (workflow step 4), not only when
 asked. Tally never writes `aiNotes` and never overwrites yours — it survives regeneration
@@ -134,7 +156,9 @@ For each row with any answer filled in:
 | Field | Action |
 |---|---|
 | `useRule` only | Find that rule in `merchants.rules`. Update its `match:` expression minimally to also match this transaction (add an `or contains(...)` clause). If the rule's match checks `field.tagging` for a `CATEGORY:` or `TAG:` pattern, auto-add that tagging to the CSV row. |
-| `newRule` | Free-form prose — tally emits this field and validates nothing. Parse the instruction yourself and create the rule per **Rule Insertion Logic**. |
+| `newRule` only | Free-form prose — tally emits this field and validates nothing. Parse the instruction yourself and create the rule per **Rule Insertion Logic**. |
+| `useRule` **and** `newRule` | Not a conflict — two different axes. `useRule` says *which rule*; `newRule` says *what to do with it*. Picking `useRule` from autocomplete is how the user names a rule unambiguously, so never discard it and re-derive the target from the prose. The prose governs the action: "add to this rule" means widen its `match:`, "also tag it x" means add the tag, and so on. |
+| Genuinely contradictory | If the prose asks for something incompatible with the named rule (e.g. `useRule: [Amazon] Shopping / Books` plus "actually make this a new merchant"), **ask** — do not pick one. Silently guessing here is how `merchants.rules` gets quietly wrong. |
 | `edits.category` | Add `CATEGORY: X / Y` to the CSV tagging column for that transaction's row. |
 | `edits.tags` | For each tag: add `TAG: x` to the CSV tagging column. If the tag doesn't exist as a tag-only rule and isn't within edit-distance 2 of an existing tag, create a new tag-only rule. If within edit-distance 2, warn the user about a possible typo first. Tally emits this field as `[]`, not blank, on a fresh row — treat `[]` as no tags. |
 | `edits.memo` | Add text to the CSV memo column for that transaction's row. |
