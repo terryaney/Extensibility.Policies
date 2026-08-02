@@ -258,6 +258,18 @@ function Test-KatVsCodeInstalled {
 	return (Test-KatCommandAvailable -Name 'code') -or (Test-Path -LiteralPath (Join-Path $env:APPDATA 'Code\User'))
 }
 
+function Test-KatCodexInstalled {
+	if (Test-KatCommandAvailable -Name 'codex') {
+		return $true
+	}
+
+	if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+		return $false
+	}
+
+	return Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'Programs\OpenAI\Codex\bin\codex.exe')
+}
+
 function New-KatResultList {
 	return ,(New-Object System.Collections.Generic.List[object])
 }
@@ -679,6 +691,7 @@ Export-ModuleMember -Function @(
 	'Read-KatJsonDocument',
 	'Test-KatClaudeInstalled',
 	'Test-KatClaudeVsCodeExtensionInstalled',
+	'Test-KatCodexInstalled',
 	'Test-KatCommandAvailable',
 	'Test-KatCopilotCliInstalled',
 	'Test-KatVsCodeInstalled',

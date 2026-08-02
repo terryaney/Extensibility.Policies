@@ -2,7 +2,8 @@ param(
     [ValidateSet('Normal', 'Detailed')]
     [string]$Verbosity = 'Normal',
     [switch]$NonInteractive,
-    [switch]$DisableToolAutoUpgrade
+    [switch]$DisableToolAutoUpgrade,
+    [switch]$Overwrite
 )
 
 Set-StrictMode -Version Latest
@@ -20,12 +21,20 @@ Import-Module $sharedModulePath -Force
 
 $compatibilityMessages = New-Object System.Collections.Generic.List[string]
 $blockedPaths = New-Object System.Collections.Generic.List[string]
+$skippedPaths = New-Object System.Collections.Generic.List[string]
 $deploymentRecords = New-Object System.Collections.Generic.List[object]
 $preSyncManagedPaths = New-Object System.Collections.Generic.List[string]
 $script:claudeContext7Configured = $null
 $script:sharedMeta = $null
 $script:vsCodeSettingsMeta = $null
 $script:clientInstalled = $null
+
+# AGENTS.md is a shared, human-edited convention file; KAT owns only this delimited region.
+$script:katRegionStart = '<!-- kat:start -->'
+$script:katRegionEnd = '<!-- kat:end -->'
+$script:katRegionPattern = '(?is)[ \t]*<!--\s*kat:start\s*-->.*?<!--\s*kat:end\s*-->[ \t]*'
+$script:codexGlobalRoot = Join-Path $env:USERPROFILE '.codex'
+$script:codexGlobalSkillRoot = Join-Path $env:USERPROFILE '.agents'
 
 function Add-Warning {
     param([string]$Message)
@@ -41,6 +50,29 @@ function Add-BlockedPath {
     if (-not [string]::IsNullOrWhiteSpace($Path) -and -not $blockedPaths.Contains($Path)) {
         $blockedPaths.Add($Path)
     }
+}
+
+function Add-SkippedPath {
+    param([string]$Path)
+
+    if (-not [string]::IsNullOrWhiteSpace($Path) -and -not $skippedPaths.Contains($Path)) {
+        $skippedPaths.Add($Path)
+    }
+}
+
+function Test-SkippedPath {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
+    foreach ($candidate in @($Path -split '; ')) {
+        $candidate = $candidate.Trim()
+        if ($skippedPaths.Contains($candidate)) { return $true }
+        $prefix = $candidate.TrimEnd('\', '/') + '\'
+        foreach ($sp in $skippedPaths) {
+            if ($sp.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { return $true }
+        }
+    }
+    return $false
 }
 
 function Add-DeploymentRecord {
@@ -392,7 +424,8 @@ function Get-SkillRepositoryManagedContexts {
 
             foreach ($scanRoot in @(
                     (Join-Path $repositoryRoot '.github\skills'),
-                    (Join-Path $repositoryRoot '.claude\skills')))
+                    (Join-Path $repositoryRoot '.claude\skills'),
+                    (Join-Path $repositoryRoot '.agents\skills')))
             {
                 if (-not $contextsByRoot[$repositoryRoot].Contains($scanRoot)) {
                     $contextsByRoot[$repositoryRoot].Add($scanRoot)
@@ -621,7 +654,54 @@ function Publish-Agents {
         else {
             Add-DeploymentRecord -Category 'agent' -Id $id -Target 'claude' -Status 'disabled' -MatrixValue 'excluded'
         }
+
+        # Agents are out of scope for codex: there is no cheap mapping from .agent.md to the Codex subagent format.
+        if (ConvertTo-BoolValue (Get-Prop $enabled 'codex') $false) {
+            Add-Warning "${id}: enabled.codex is set but agents are out of scope for Codex; no .agent.md to Codex subagent mapping exists."
+            Add-DeploymentRecord -Category 'agent' -Id $id -Target 'codex' -Status 'unsupported' -Detail 'agents are out of scope for Codex; no .agent.md to Codex subagent mapping exists'
+        }
+        else {
+            Add-DeploymentRecord -Category 'agent' -Id $id -Target 'codex' -Status 'disabled' -MatrixValue 'excluded'
+        }
     }
+}
+
+function Get-CodexAgentsFilePath {
+    param([string]$RepositoryRoot)
+
+    if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
+        return Join-Path $script:codexGlobalRoot 'AGENTS.md'
+    }
+
+    return Join-Path $RepositoryRoot 'AGENTS.md'
+}
+
+function New-CodexInstructionSection {
+    param(
+        [object]$Definition,
+        [string[]]$Scope
+    )
+
+    $id = $Definition.Id
+    $body = Resolve-ClientMarkdown -Content $Definition.Body -Client 'codex'
+    $body = Resolve-BodyReplacements -Content $body -Meta $Definition.Meta -Client 'codex'
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add("###### $id instructions ######")
+    $lines.Add('')
+
+    # Codex has no applyTo/glob equivalent — an AGENTS.md body is unconditionally active for its whole subtree.
+    $scopePatterns = @(@($Scope) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and $_ -ne '**' })
+    if ($scopePatterns.Count -gt 0) {
+        $formattedScope = (@($scopePatterns | ForEach-Object { '`' + $_ + '`' })) -join ', '
+        $lines.Add("The following applies when working on files matching $formattedScope.")
+        $lines.Add('')
+        Add-Warning "${id}: Codex has no glob scoping, so instructions.scope was rendered as a prose preamble in AGENTS.md. This is a soft gate, not enforcement."
+    }
+
+    $lines.Add(([string]$body).Trim())
+
+    return ($lines -join "`r`n")
 }
 
 function Publish-Instructions {
@@ -631,6 +711,11 @@ function Publish-Instructions {
     )
 
     $claudeInstructionTargets = New-Object System.Collections.Generic.List[object]
+    # AGENTS.md is written once per file with every enabled instruction, so codex output is collected
+    # across the definition loop and flushed afterwards.
+    $codexCandidatePaths = New-Object System.Collections.Generic.List[string]
+    $codexSectionsByPath = @{}
+    $codexResultsById = @{}
 
     foreach ($definition in $Definitions) {
         $enabled = $definition.Enabled
@@ -761,6 +846,99 @@ function Publish-Instructions {
             Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'claudeGlobalInstruction' -Status 'disabled' -MatrixValue 'excluded' -MatrixScoped $instructionScopedValue
             Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'claudePathInstruction' -Status 'disabled' -MatrixValue 'excluded' -MatrixScoped $instructionScopedValue
         }
+
+        $codexTargetPaths = if ($instructionRepositories.Count -eq 0) {
+            @(Get-CodexAgentsFilePath)
+        }
+        else {
+            @($instructionRepositories | ForEach-Object { Get-CodexAgentsFilePath -RepositoryRoot $_ })
+        }
+
+        foreach ($codexTargetPath in $codexTargetPaths) {
+            if (-not $codexCandidatePaths.Contains($codexTargetPath)) {
+                $codexCandidatePaths.Add($codexTargetPath)
+            }
+        }
+
+        # codex is strictly opt-in: AGENTS.md is a shared merge target, so it never defaults to true.
+        if (ConvertTo-BoolValue (Get-Prop $enabled 'codex') $false) {
+            $codexSection = New-CodexInstructionSection -Definition $definition -Scope $instructionScope
+            $codexPaths = New-Object System.Collections.Generic.List[string]
+            $missingCodexRepoPaths = New-Object System.Collections.Generic.List[string]
+
+            if ($instructionRepositories.Count -eq 0) {
+                $codexPaths.Add((Get-CodexAgentsFilePath))
+            }
+            else {
+                foreach ($instructionRepositoryRoot in $instructionRepositories) {
+                    if (-not (Test-Path -LiteralPath $instructionRepositoryRoot -PathType Container)) {
+                        $missingCodexRepoPaths.Add($instructionRepositoryRoot)
+                        continue
+                    }
+
+                    $codexPaths.Add((Get-CodexAgentsFilePath -RepositoryRoot $instructionRepositoryRoot))
+                }
+            }
+
+            foreach ($codexPath in $codexPaths) {
+                if (-not $codexSectionsByPath.ContainsKey($codexPath)) {
+                    $codexSectionsByPath[$codexPath] = [System.Collections.Generic.List[object]]::new()
+                }
+
+                $codexSectionsByPath[$codexPath].Add([pscustomobject]@{
+                    Id = $id
+                    Section = $codexSection
+                })
+            }
+
+            $codexResultsById[$id] = [pscustomobject]@{
+                Paths = @($codexPaths.ToArray())
+                MissingRepositories = @($missingCodexRepoPaths.ToArray())
+                MatrixValue = $instructionMatrixValue
+                MatrixScoped = $instructionScopedValue
+            }
+        }
+        else {
+            Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'codex' -Status 'disabled' -MatrixValue 'excluded' -MatrixScoped $instructionScopedValue
+        }
+    }
+
+    # Cleanup is targeted: AGENTS.md sits at a repository root, which can never be an ownable managed root.
+    $codexPathSucceeded = @{}
+    foreach ($codexPath in $codexCandidatePaths) {
+        $codexEntries = @()
+        if ($codexSectionsByPath.ContainsKey($codexPath)) {
+            $codexEntries = @($codexSectionsByPath[$codexPath].ToArray())
+        }
+
+        if ($codexEntries.Count -eq 0) {
+            [void](Write-ManagedRegionFile -Path $codexPath)
+            continue
+        }
+
+        $codexBlock = (@($codexEntries | Sort-Object Id | ForEach-Object { $_.Section })) -join "`r`n`r`n"
+        $codexPathSucceeded[$codexPath] = Write-ManagedRegionFile -Path $codexPath -Content $codexBlock -ValidationLabel 'Codex instructions'
+    }
+
+    foreach ($codexId in ($codexResultsById.Keys | Sort-Object)) {
+        $codexResult = $codexResultsById[$codexId]
+        $codexSucceeded = $codexResult.MissingRepositories.Count -eq 0 -and $codexResult.Paths.Count -gt 0
+
+        foreach ($codexPath in $codexResult.Paths) {
+            if (-not ($codexPathSucceeded.ContainsKey($codexPath) -and $codexPathSucceeded[$codexPath])) {
+                $codexSucceeded = $false
+            }
+        }
+
+        Add-DeploymentRecord `
+            -Category 'instruction' `
+            -Id $codexId `
+            -Target 'codex' `
+            -Status $(if ($codexSucceeded) { 'ok' } else { 'blocked' }) `
+            -Path $(if ($codexResult.Paths.Count -gt 0) { $codexResult.Paths -join '; ' } else { $null }) `
+            -Detail $(if ($codexResult.MissingRepositories.Count -gt 0) { "destination '$($codexResult.MissingRepositories -join '; ')' does not exist" } else { $null }) `
+            -MatrixValue $(if ($codexSucceeded) { $codexResult.MatrixValue } else { $null }) `
+            -MatrixScoped $codexResult.MatrixScoped
     }
 
     return [pscustomobject]@{
@@ -768,11 +946,24 @@ function Publish-Instructions {
     }
 }
 
+function Get-CodexGlobalSkillPath {
+    param([string]$Id)
+
+    return Join-Path (Join-Path $script:codexGlobalSkillRoot 'skills') $Id
+}
+
 function Publish-Skills {
     param(
         [object]$Roots,
-        [object[]]$Definitions
+        [object[]]$Definitions,
+        [object[]]$ExternalPrimitiveDefinitions = @()
     )
+
+    # %USERPROFILE%\.agents\skills is shared with copilot-client external primitives, whose uninstall
+    # is a recursive delete of the whole id folder. Never let both writers own the same id.
+    $copilotPrimitiveIds = @($ExternalPrimitiveDefinitions |
+        Where-Object { [string]$_.Client -ieq 'copilot' } |
+        ForEach-Object { [string]$_.Id })
 
     foreach ($definition in $Definitions) {
         $enabled = $definition.Enabled
@@ -903,7 +1094,84 @@ function Publish-Skills {
         else {
             Add-DeploymentRecord -Category 'skill' -Id $id -Target 'claude' -Status 'disabled' -MatrixValue 'excluded'
         }
+
+        $codexEnabled = ConvertTo-BoolValue (Get-Prop $enabled 'codex') $false
+        $codexIsGlobal = $skillRepositories.Count -eq 0
+        $codexCollides = $codexEnabled -and $codexIsGlobal -and ($copilotPrimitiveIds -icontains $id)
+
+        if ($codexCollides) {
+            Add-Warning "${id}: a copilot external primitive of the same id installs to $(Get-CodexGlobalSkillPath -Id $id); codex publishing was skipped because uninstalling that primitive would delete the folder outright."
+            Add-DeploymentRecord -Category 'skill' -Id $id -Target 'codex' -Status 'skipped' -Path (Get-CodexGlobalSkillPath -Id $id) -Detail 'global skill id collides with a copilot external primitive; codex skipped'
+        }
+        elseif ($codexEnabled) {
+            $codexDefinition = New-CodexSkillDefinition -SkillDefinition $definition
+            $publishTargets = New-Object System.Collections.Generic.List[string]
+            $codexSucceeded = $true
+            $repoMissing = $false
+            $missingRepoPaths = [System.Collections.Generic.List[string]]::new()
+
+            $codexRoots = if ($codexIsGlobal) {
+                @($script:codexGlobalSkillRoot)
+            }
+            else {
+                @($skillRepositories | ForEach-Object { Join-Path $_ '.agents' })
+            }
+
+            foreach ($codexRoot in $codexRoots) {
+                if (-not $codexIsGlobal -and -not (Test-Path -LiteralPath (Split-Path $codexRoot -Parent) -PathType Container)) {
+                    $repoMissing = $true
+                    $codexSucceeded = $false
+                    $missingRepoPaths.Add((Split-Path $codexRoot -Parent))
+                    continue
+                }
+
+                $publishTargets.Add((Join-Path (Join-Path $codexRoot 'skills') $id))
+                $codexSucceeded = (Install-RenderedSkill -Root $codexRoot -SkillDefinition $codexDefinition -Target 'codex') -and $codexSucceeded
+            }
+
+            $deploymentPath = if ($publishTargets.Count -gt 0) { $publishTargets -join '; ' } else { $null }
+            Add-DeploymentRecord -Category 'skill' -Id $id -Target 'codex' -Status $(if ($codexSucceeded) { 'ok' } else { 'blocked' }) -Path $deploymentPath -Detail $(if ($repoMissing) { "destination '$($missingRepoPaths -join '; ')' does not exist" } elseif ($skillRepositories.Count -gt 1) { "paths=$($publishTargets.Count)" } else { $null }) -MatrixValue $(if ($codexSucceeded) { $skillMatrixValue } else { $null })
+        }
+        else {
+            Add-DeploymentRecord -Category 'skill' -Id $id -Target 'codex' -Status 'disabled' -MatrixValue 'excluded'
+        }
+
+        # Targeted cleanup: %USERPROFILE%\.agents\skills can never be a managed root, so only ids that
+        # codex stopped publishing globally are removed — and only when KAT owns every file in them.
+        if (-not ($codexEnabled -and $codexIsGlobal) -and -not $codexCollides) {
+            $codexGlobalPath = Get-CodexGlobalSkillPath -Id $id
+            if (Test-Path -LiteralPath $codexGlobalPath) {
+                if (Remove-KatManagedPath -Path $codexGlobalPath -RepositoryRoot $repoRoot) {
+                    Add-DeploymentRecord -Category 'skill' -Id $id -Target 'codex' -Status 'removed' -Path $codexGlobalPath
+                }
+                elseif (Test-KatManagedRemnant -Path $codexGlobalPath) {
+                    Add-BlockedPath $codexGlobalPath
+                    Add-DeploymentRecord -Category 'skill' -Id $id -Target 'codex' -Status 'blocked' -Path $codexGlobalPath -Detail 'previously published codex skill could not be removed'
+                }
+            }
+        }
     }
+}
+
+function Test-KatManagedRemnant {
+    param([string]$Path)
+
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Ignore
+    if ($null -eq $item) {
+        return $false
+    }
+
+    if (-not $item.PSIsContainer) {
+        return (Test-LegacyManagedItem -Item $item -RepositoryRoot $repoRoot)
+    }
+
+    foreach ($child in @(Get-ChildItem -LiteralPath $Path -Force -Recurse -ErrorAction SilentlyContinue)) {
+        if (Test-LegacyManagedItem -Item $child -RepositoryRoot $repoRoot) {
+            return $true
+        }
+    }
+
+    return $false
 }
 
 function Get-ExternalPrimitiveDefinitions {
@@ -1345,6 +1613,9 @@ function Get-RemovedPathInfo {
     # Skills — id is first path component after 'skills\'
     if ($Path -match '\\skills\\([^\\]+)') {
         $skillId = $Matches[1]
+        if ($Path -match '\\\.agents\\') {
+            return [pscustomobject]@{ Category = 'skill'; Id = $skillId; Target = 'codex' }
+        }
         if ($Path -match '\\\.claude\\') {
             return [pscustomobject]@{ Category = 'skill'; Id = $skillId; Target = 'claude' }
         }
@@ -1434,6 +1705,11 @@ function Get-CellDisplayValue {
         'removed'  { return 'removed' }
         'disabled' { return 'excluded' }
         'blocked'  {
+            if (Test-SkippedPath ([string]$Record.Path)) {
+                $detail = 'file is no longer read-only; run update.ps1 with -Overwrite to replace'
+                $marker = Get-FootnoteMarker -Footnotes $Footnotes -Detail $detail -FootnoteColors $FootnoteColors -Color 'DarkYellow'
+                return "skipped$marker"
+            }
             if (-not [string]::IsNullOrWhiteSpace([string]$Record.Detail)) {
                 $marker = Get-FootnoteMarker -Footnotes $Footnotes -Detail ([string]$Record.Detail) -FootnoteColors $FootnoteColors -Color 'Red'
                 return "blocked$marker"
@@ -1442,8 +1718,14 @@ function Get-CellDisplayValue {
         }
         'skipped'  {
             $detail = if (-not [string]::IsNullOrWhiteSpace([string]$Record.Detail)) { [string]$Record.Detail } else { 'skipped' }
-            $marker = Get-FootnoteMarker -Footnotes $Footnotes -Detail $detail -FootnoteColors $FootnoteColors -Color 'Red'
-            return "blocked$marker"
+            $marker = Get-FootnoteMarker -Footnotes $Footnotes -Detail $detail -FootnoteColors $FootnoteColors -Color 'DarkYellow'
+            return "skipped$marker"
+        }
+        'unsupported' {
+            # Something was explicitly asked for that this client cannot receive — distinct from 'excluded'.
+            $detail = if (-not [string]::IsNullOrWhiteSpace([string]$Record.Detail)) { [string]$Record.Detail } else { 'not supported for this client' }
+            $marker = Get-FootnoteMarker -Footnotes $Footnotes -Detail $detail -FootnoteColors $FootnoteColors -Color 'DarkYellow'
+            return "unsupported$marker"
         }
         'ok'       {
             if (-not [string]::IsNullOrWhiteSpace([string]$Record.MatrixValue)) {
@@ -1487,11 +1769,12 @@ function Write-McpDeploymentMatrix {
     if ($mcpRecords.Count -eq 0) { return }
 
     $groups         = $mcpRecords | Group-Object Id | Sort-Object Name
-    $statusColWidth = 12
+    $statusColWidth = 13
     $mcpActiveTargetDefs = @(
         if ($null -eq $script:clientInstalled -or $script:clientInstalled.vscode)     { [pscustomobject]@{ Target = 'vscode';     Header = 'vscode' } }
         if ($null -eq $script:clientInstalled -or $script:clientInstalled.copilotCli) { [pscustomobject]@{ Target = 'copilotCli'; Header = 'cli'    } }
         if ($null -eq $script:clientInstalled -or $script:clientInstalled.claude)     { [pscustomobject]@{ Target = 'claude';     Header = 'claude' } }
+        if ($null -eq $script:clientInstalled -or $script:clientInstalled.codex)      { [pscustomobject]@{ Target = 'codex';      Header = 'codex'  } }
     )
     $mcpDisplayTargets = @($mcpActiveTargetDefs | ForEach-Object { $_.Target })
     $footnotes      = [System.Collections.Generic.List[string]]::new()
@@ -1507,6 +1790,10 @@ function Write-McpDeploymentMatrix {
                 'excluded'
             } elseif ($record.Status -eq 'ok') {
                 'installed'
+            } elseif ($record.Status -eq 'unsupported') {
+                $detail = if (-not [string]::IsNullOrWhiteSpace([string]$record.Detail)) { [string]$record.Detail } else { 'not supported for this client' }
+                $marker = Get-FootnoteMarker -Footnotes $footnotes -Detail $detail -FootnoteColors $footnoteColors -Color 'DarkYellow'
+                "unsupported$marker"
             } else {
                 $detail = [string]$record.Detail
                 if (-not [string]::IsNullOrWhiteSpace($detail)) {
@@ -1518,7 +1805,7 @@ function Write-McpDeploymentMatrix {
             }
 
             $cells      += $displayValue
-            $cellColors += if ($displayValue -like 'blocked*') { 'Red' } elseif ($displayValue -eq 'excluded') { 'DarkYellow' } else { $null }
+            $cellColors += if ($displayValue -like 'blocked*') { 'Red' } elseif ($displayValue -like 'skipped*') { 'DarkYellow' } elseif ($displayValue -like 'unsupported*') { 'DarkYellow' } elseif ($displayValue -eq 'excluded') { 'DarkYellow' } else { $null }
         }
 
         if ($cells.Count -gt 1 -and -not @($cells[1..($cells.Count - 1)] | Where-Object { [string]$_ -ne 'excluded' })) { continue }
@@ -1559,6 +1846,14 @@ function Write-SyncReport {
     Write-DeploymentMatrix -ArtifactWidth $globalArtifactWidth
     Write-CompatibilitySummary -ArtifactWidth $globalArtifactWidth
     Write-ArtifactLocationsTable
+
+    if ($skippedPaths.Count -gt 0) {
+        Write-Host '--- Manual Actions Required ---' -ForegroundColor DarkYellow
+        Write-Host '- These files are no longer read-only (may have been manually modified) and were skipped. Run update.ps1 with -Overwrite to replace:' -ForegroundColor DarkYellow
+        $skippedPaths | Sort-Object -Unique | ForEach-Object {
+            Write-Host "   - $_" -ForegroundColor DarkYellow
+        }
+    }
 
     if ($blockedPaths.Count -gt 0) {
         Write-Host '--- Manual Cleanup Required ---' -ForegroundColor Red
@@ -1712,6 +2007,24 @@ function Write-BootstrapNoClientWarnings {
     }
 }
 
+function Add-CodexMcpUnsupportedRecords {
+    param([object]$McpSettings)
+
+    # Codex configures MCP through config.toml; the three install-*.ps1 helpers are JSON-based.
+    foreach ($mcpServer in @(
+            [pscustomobject]@{ Key = 'context7';  ProductName = 'Context7'  },
+            [pscustomobject]@{ Key = 'github';    ProductName = 'GitHub'    },
+            [pscustomobject]@{ Key = 'katledger'; ProductName = 'KatLedger' })) {
+
+        $serverConfig = Get-Prop $McpSettings $mcpServer.Key
+        if ($null -eq $serverConfig) { continue }
+        if (-not (ConvertTo-BoolValue (Get-Prop $serverConfig 'codex') $false)) { continue }
+
+        Add-Warning "$($mcpServer.ProductName) MCP setup: codex is out of scope. Codex configures MCP servers in config.toml, which KAT Policies does not manage."
+        Add-DeploymentRecord -Category 'mcp' -Id $mcpServer.ProductName -Target 'codex' -Status 'unsupported' -Detail 'Codex configures MCP servers in config.toml, which KAT Policies does not manage'
+    }
+}
+
 function Invoke-McpBootstrap {
     param(
         [Parameter(Mandatory)][string]$ProductName,
@@ -1757,6 +2070,7 @@ function Invoke-PolicySync {
         vscode     = Test-KatVsCodeInstalled
         copilotCli = Test-KatCopilotCliInstalled
         claude     = Test-KatClaudeInstalled
+        codex      = Test-KatCodexInstalled
     }
 
     $roots = Get-EnvironmentRoots
@@ -1783,13 +2097,15 @@ function Invoke-PolicySync {
         Publish-TerminalFiles -Roots $roots
         Publish-Agents -Roots $roots -Definitions $allAgentDefinitions
         $instructionPublishResult = Publish-Instructions -Roots $roots -Definitions $instructionDefinitions
-        Publish-Skills -Roots $roots -Definitions $skillDefinitions
+        Publish-Skills -Roots $roots -Definitions $skillDefinitions -ExternalPrimitiveDefinitions $externalPrimitiveDefinitions
         Install-ExternalPrimitives -Roots $roots -Definitions $externalPrimitiveDefinitions
         if ($null -eq $script:clientInstalled -or $script:clientInstalled.claude) {
             Publish-ClaudeDocument -Roots $roots -InstructionPublishResult $instructionPublishResult -Definitions $instructionDefinitions
         }
         Sync-VsCodeSettingsSafeguards
         Ensure-RipgrepTool
+
+        Add-CodexMcpUnsupportedRecords -McpSettings $mcpSettings
 
         if (Test-McpParityRequested -ServerKey 'context7') {
             Invoke-McpBootstrap -ProductName 'Context7' -HelperScript 'install-context7-remote.ps1' -McpConfig (Get-Prop $mcpSettings 'context7')
@@ -1822,11 +2138,12 @@ function Write-DeploymentMatrix {
         skill       = 'Skills'
     }
 
-    $statusColWidth  = 12
+    $statusColWidth  = 13
     $activeTargetDefs = @(
         if ($null -eq $script:clientInstalled -or $script:clientInstalled.vscode)     { [pscustomobject]@{ Target = 'vscode';     Header = 'vscode' } }
         if ($null -eq $script:clientInstalled -or $script:clientInstalled.copilotCli) { [pscustomobject]@{ Target = 'copilotCli'; Header = 'cli'    } }
         if ($null -eq $script:clientInstalled -or $script:clientInstalled.claude)     { [pscustomobject]@{ Target = 'claude';     Header = 'claude' } }
+        if ($null -eq $script:clientInstalled -or $script:clientInstalled.codex)      { [pscustomobject]@{ Target = 'codex';      Header = 'codex'  } }
     )
     $displayTargets = @($activeTargetDefs | ForEach-Object { $_.Target })
     $displayHeaders = @('artifact') + @($activeTargetDefs | ForEach-Object { $_.Header })
@@ -1900,7 +2217,7 @@ function Write-DeploymentMatrix {
             $cellColors = @($null) # artifact column — no special color
             for ($ci = 1; $ci -lt $cells.Count; $ci++) {
                 $v = [string]$cells[$ci]
-                $cellColors += if ($v -like 'blocked*') { 'Red' } elseif ($v -in @('excluded', 'removed')) { 'DarkYellow' } else { $null }
+                $cellColors += if ($v -like 'blocked*') { 'Red' } elseif ($v -like 'skipped*') { 'DarkYellow' } elseif ($v -like 'unsupported*') { 'DarkYellow' } elseif ($v -in @('excluded', 'removed')) { 'DarkYellow' } else { $null }
             }
 
             [pscustomobject]@{ Cells = $cells; CellColors = $cellColors }
@@ -1936,12 +2253,13 @@ function Write-ArtifactLocationsTable {
         claudePathInstruction   = 'Claude'
         copilot                 = 'Copilot'
         claudeDoc               = 'Claude'
+        codex                   = 'Codex'
     }
     $categoryOrder = @('agent', 'instruction', 'skill')
     $targetOrders = @{
         agent       = @('vscode', 'copilotCli', 'claude')
-        instruction = @('vscode', 'copilotCli', 'claudeGlobalInstruction', 'claudePathInstruction')
-        skill       = @('copilot', 'claude')
+        instruction = @('vscode', 'copilotCli', 'claudeGlobalInstruction', 'claudePathInstruction', 'codex')
+        skill       = @('copilot', 'claude', 'codex')
     }
 
     $rows = @()
@@ -2052,7 +2370,7 @@ function Write-ArtifactLocationsTable {
             }
         }
     }
-    $typeOrder = @{ 'N/A' = 0; VSCode = 1; CLI = 2; Claude = 3; Scoped = 4; Copilot = 5 }
+    $typeOrder = @{ 'N/A' = 0; VSCode = 1; CLI = 2; Claude = 3; Scoped = 4; Copilot = 5; Codex = 6 }
 
     $sortedRows = $rows | Sort-Object {
         $aRank = & $getArtifactRank $_.Cells[0]
@@ -2095,8 +2413,8 @@ function Write-ConfigurationLocationsTable {
         elseif ($null -ne $skippedRecord -and $null -eq $okRecord) {
             $detail = [string]$skippedRecord.Detail
             $skipDetail = if (-not [string]::IsNullOrWhiteSpace($detail)) { $detail } else { 'skipped' }
-            $displayStatus = "skipped$(Get-FootnoteMarker -Footnotes $footnotes -Detail $skipDetail -FootnoteColors $footnoteColors -Color 'Yellow')"
-            $statusColor = 'Yellow'
+            $displayStatus = "skipped$(Get-FootnoteMarker -Footnotes $footnotes -Detail $skipDetail -FootnoteColors $footnoteColors -Color 'DarkYellow')"
+            $statusColor = 'DarkYellow'
         }
         else {
             $detail = if ($null -ne $okRecord) { [string]$okRecord.Detail } else { '' }
@@ -2156,6 +2474,9 @@ function Write-CompatibilitySummary {
         }
         if ($null -ne $script:clientInstalled -and -not $script:clientInstalled.vscode) {
             [pscustomobject]@{ Cells = @('vscode primitives', 'GitHub Copilot (VS Code) not installed. All primitives skipped.') }
+        }
+        if ($null -ne $script:clientInstalled -and -not $script:clientInstalled.codex) {
+            [pscustomobject]@{ Cells = @('codex primitives', 'Codex CLI not installed. Codex columns are hidden from the deployment matrix.') }
         }
     )
 
@@ -2220,8 +2541,8 @@ function Write-CompatibilitySummary {
     $summaryRows = @($notInstalledRows) + $rollupRows
 
     if (@($summaryRows).Count -gt 0) {
-		Write-Host 'Compatibility Summary' -ForegroundColor Yellow
-        Write-AsciiTable -Title '' -Headers @('artifact', 'category') -Rows $summaryRows -Color 'Yellow' -RowDividers $true -FixedWidths @($ArtifactWidth, 0)
+		Write-Host 'Compatibility Summary' -ForegroundColor DarkYellow
+        Write-AsciiTable -Title '' -Headers @('artifact', 'category') -Rows $summaryRows -Color 'DarkYellow' -RowDividers $true -FixedWidths @($ArtifactWidth, 0)
     }
 }
 
@@ -2332,7 +2653,7 @@ function Resolve-BodyReplacements {
     param(
         [string]$Content,
         [object]$Meta,
-        [ValidateSet('copilot', 'vscode', 'copilotCli', 'claude')]
+        [ValidateSet('copilot', 'vscode', 'copilotCli', 'claude', 'codex')]
         [string]$Client
     )
 
@@ -2345,6 +2666,7 @@ function Resolve-BodyReplacements {
         'copilotCli' { 'copilot.cli' }
         'copilot'    { 'copilot' }
         'claude'     { 'claude' }
+        'codex'      { 'codex' }
     }
 
     $replacements = Get-Prop (Get-Prop $Meta 'bodyReplacements') $metaKey
@@ -2721,7 +3043,22 @@ function Write-ManagedFile {
 
     New-Directory (Split-Path -Parent $Path)
     if (-not (Remove-KatManagedPath -Path $Path -RepositoryRoot $repoRoot)) {
-        if ($ForceOwnedPath) {
+        $existingItem = Get-Item -LiteralPath $Path -Force -ErrorAction Ignore
+        $isUserModified = $null -ne $existingItem -and -not $existingItem.PSIsContainer -and -not $existingItem.IsReadOnly
+        if ($isUserModified -and $Overwrite) {
+            try {
+                Remove-Item -LiteralPath $Path -Force -Recurse -Confirm:$false -ErrorAction Stop
+            }
+            catch {
+                Add-BlockedPath $Path
+                return $false
+            }
+        }
+        elseif ($isUserModified) {
+            Add-SkippedPath $Path
+            return $false
+        }
+        elseif ($ForceOwnedPath) {
             try {
                 Remove-Item -LiteralPath $Path -Force -Recurse -Confirm:$false -ErrorAction Stop
             }
@@ -2751,6 +3088,160 @@ function Write-ManagedFile {
     return $true
 }
 
+function Set-ManagedWritable {
+    param([string]$Path)
+
+    try {
+        $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+        if ($item.IsReadOnly) {
+            $item.IsReadOnly = $false
+        }
+    }
+    catch {
+        # Clearing read-only is best-effort only.
+    }
+}
+
+function Get-ManagedRegionMatch {
+    param([string]$Content)
+
+    if ([string]::IsNullOrEmpty($Content)) {
+        return $null
+    }
+
+    $match = [regex]::Match($Content, $script:katRegionPattern)
+    if (-not $match.Success) {
+        return $null
+    }
+
+    return $match
+}
+
+function Remove-ManagedRegionText {
+    param([string]$Content)
+
+    $result = if ($null -eq $Content) { '' } else { [string]$Content }
+    while ($true) {
+        $match = Get-ManagedRegionMatch -Content $result
+        if ($null -eq $match) { break }
+
+        $result = $result.Substring(0, $match.Index) + $result.Substring($match.Index + $match.Length)
+    }
+
+    return [regex]::Replace($result, '(\r?\n){3,}', "`r`n`r`n")
+}
+
+# Merge-aware writer for cross-vendor files (AGENTS.md) that KAT co-owns with humans.
+# KAT owns only the text between <!-- kat:start --> and <!-- kat:end -->; everything else is preserved.
+# Passing an empty/absent Content strips the region entirely, deleting the file when nothing else remains.
+function Write-ManagedRegionFile {
+    param(
+        [string]$Path,
+        [string]$Content = $null,
+        [string]$ValidationLabel = $null
+    )
+
+    $isStrip = [string]::IsNullOrWhiteSpace($Content)
+    $fileExists = Test-Path -LiteralPath $Path -PathType Leaf
+
+    if (-not $fileExists -and (Test-Path -LiteralPath $Path)) {
+        Add-BlockedPath $Path
+        return $false
+    }
+
+    $existingContent = ''
+    if ($fileExists) {
+        $existingContent = [string](Get-Content -LiteralPath $Path -Raw -ErrorAction Ignore)
+        if ($null -eq $existingContent) { $existingContent = '' }
+    }
+
+    # A file with no KAT region and nothing to add is simply not ours — never report it.
+    if ($isStrip -and (-not $fileExists -or $null -eq (Get-ManagedRegionMatch -Content $existingContent))) {
+        return $true
+    }
+
+    if ($fileExists -and -not (Test-KatMarker -Path $Path) -and -not $Overwrite) {
+        $existingItem = Get-Item -LiteralPath $Path -Force -ErrorAction Ignore
+        if ($null -ne $existingItem -and $existingItem.IsReadOnly) {
+            Add-BlockedPath $Path
+        }
+        else {
+            Add-SkippedPath $Path
+        }
+
+        return $false
+    }
+
+    if ($isStrip) {
+        $stripped = Remove-ManagedRegionText -Content $existingContent
+        if ([string]::IsNullOrWhiteSpace($stripped)) {
+            try {
+                Set-ManagedWritable -Path $Path
+                Remove-Item -LiteralPath $Path -Force -Confirm:$false -ErrorAction Stop
+                return $true
+            }
+            catch {
+                Add-BlockedPath $Path
+                return $false
+            }
+        }
+
+        try {
+            Set-ManagedWritable -Path $Path
+            Set-Content -LiteralPath $Path -Value ($stripped.TrimEnd() + "`r`n") -NoNewline
+        }
+        catch {
+            Add-BlockedPath $Path
+            return $false
+        }
+
+        # KAT no longer contributes to this file, so relinquish ownership of it.
+        Clear-KatMarker -Path $Path
+        Set-ManagedWritable -Path $Path
+        return $true
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ValidationLabel)) {
+        $unresolvedTokens = @(Get-UnresolvedPlaceholderTokens -Content $Content)
+        if ($unresolvedTokens.Count -gt 0) {
+            Add-Warning "${ValidationLabel}: unresolved placeholders remain ($($unresolvedTokens -join ', '))."
+            Add-BlockedPath $Path
+            return $false
+        }
+    }
+
+    $block = $script:katRegionStart + "`r`n" + $Content.Trim() + "`r`n" + $script:katRegionEnd
+    $regionMatch = Get-ManagedRegionMatch -Content $existingContent
+
+    $updatedContent = if ($null -ne $regionMatch) {
+        $existingContent.Substring(0, $regionMatch.Index) + $block + $existingContent.Substring($regionMatch.Index + $regionMatch.Length)
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($existingContent)) {
+        $existingContent.TrimEnd() + "`r`n`r`n" + $block
+    }
+    else {
+        $block
+    }
+
+    New-Directory (Split-Path -Parent $Path)
+
+    try {
+        if ($fileExists) {
+            Set-ManagedWritable -Path $Path
+        }
+
+        Set-Content -LiteralPath $Path -Value ($updatedContent.TrimEnd() + "`r`n") -NoNewline
+    }
+    catch {
+        Add-BlockedPath $Path
+        return $false
+    }
+
+    Write-CreatedByStream -Path $Path
+    Set-ManagedReadOnly -Path $Path
+    return $true
+}
+
 function Copy-ManagedFile {
     param(
         [string]$Path,
@@ -2760,7 +3251,22 @@ function Copy-ManagedFile {
 
     New-Directory (Split-Path -Parent $Path)
     if (-not (Remove-KatManagedPath -Path $Path -RepositoryRoot $repoRoot)) {
-        if ($ForceOwnedPath) {
+        $existingItem = Get-Item -LiteralPath $Path -Force -ErrorAction Ignore
+        $isUserModified = $null -ne $existingItem -and -not $existingItem.PSIsContainer -and -not $existingItem.IsReadOnly
+        if ($isUserModified -and $Overwrite) {
+            try {
+                Remove-Item -LiteralPath $Path -Force -Recurse -Confirm:$false -ErrorAction Stop
+            }
+            catch {
+                Add-BlockedPath $Path
+                return $false
+            }
+        }
+        elseif ($isUserModified) {
+            Add-SkippedPath $Path
+            return $false
+        }
+        elseif ($ForceOwnedPath) {
             try {
                 Remove-Item -LiteralPath $Path -Force -Recurse -Confirm:$false -ErrorAction Stop
             }
@@ -3037,7 +3543,8 @@ function Resolve-ClientMarkdown {
         # 'vscode'     = keeps copilot, copilot-vscode; removes copilot-cli, claude
         # 'copilotCli' = keeps copilot, copilot-cli; removes copilot-vscode, claude
         # 'claude'     = keeps claude; removes all copilot variants
-        [ValidateSet('copilot', 'vscode', 'copilotCli', 'claude')]
+        # 'codex'      = keeps codex; removes claude and all copilot variants
+        [ValidateSet('copilot', 'vscode', 'copilotCli', 'claude', 'codex')]
         [string]$Client
     )
 
@@ -3047,12 +3554,13 @@ function Resolve-ClientMarkdown {
 
     $keepTags = switch ($Client) {
         'claude'     { @('claude') }
+        'codex'      { @('codex') }
         'vscode'     { @('copilot', 'copilot-vscode') }
         'copilotCli' { @('copilot', 'copilot-cli') }
         'copilot'    { @('copilot', 'copilot-vscode', 'copilot-cli') }
     }
 
-    $allTags = @('copilot', 'copilot-vscode', 'copilot-cli', 'claude')
+    $allTags = @('copilot', 'copilot-vscode', 'copilot-cli', 'claude', 'codex')
     $lineEnding = if ($Content -match '\r\n') { "`r`n" } else { "`n" }
     $lines = $Content -split '\r?\n'
     $result = New-Object System.Collections.Generic.List[string]
@@ -3127,7 +3635,7 @@ function Split-MarkdownFrontmatter {
 function Get-SkillExcludedItemNames {
     param(
         [object]$Meta,
-        [ValidateSet('copilot', 'claude')]
+        [ValidateSet('copilot', 'claude', 'codex')]
         [string]$Client
     )
 
@@ -3171,6 +3679,25 @@ function New-ClaudeSkillDefinition {
         ClaudeMeta = $SkillDefinition.ClaudeMeta
         CommandFiles = $SkillDefinition.CommandFiles
         ExcludedItemNames = @('commands')
+    }
+}
+
+function New-CodexSkillDefinition {
+    param([object]$SkillDefinition)
+
+    $body = Resolve-ClientMarkdown -Content $SkillDefinition.Body -Client 'codex'
+    $body = Resolve-BodyReplacements -Content $body -Meta $SkillDefinition.Meta -Client 'codex'
+    return [pscustomobject]@{
+        Directory = $SkillDefinition.Directory
+        Meta = $SkillDefinition.Meta
+        Body = $body
+        # Codex reads only name + description from SKILL.md frontmatter, so allowed-tools are dropped.
+        AllowedTools = @()
+        Enabled = $SkillDefinition.Enabled
+        Id = $SkillDefinition.Id
+        ClaudeMeta = $SkillDefinition.ClaudeMeta
+        CommandFiles = $SkillDefinition.CommandFiles
+        ExcludedItemNames = @('commands', 'agents')
     }
 }
 
@@ -3430,11 +3957,21 @@ function ConvertTo-SkillDocument {
     param(
         [object]$Meta,
         [string]$Body,
-        [string[]]$AllowedTools = @()
+        [string[]]$AllowedTools = @(),
+        [ValidateSet('default', 'codex')]
+        [string]$Client = 'default'
     )
 
+    # Codex documents its SKILL.md frontmatter as name + description only, and ignores anything else.
+    $frontmatterFields = if ($Client -eq 'codex') {
+        @('name', 'description')
+    }
+    else {
+        @('name', 'description', 'license', 'compatibility', 'context')
+    }
+
     $frontmatter = New-Object System.Collections.Generic.List[string]
-    foreach ($field in @('name', 'description', 'license', 'compatibility', 'context')) {
+    foreach ($field in $frontmatterFields) {
         $value = Get-Prop $Meta $field
         if (-not [string]::IsNullOrWhiteSpace([string]$value)) {
             $frontmatter.Add($field + ': ' + (Format-YamlScalar $value))
@@ -3661,15 +4198,15 @@ function Install-RenderedSkill {
         return $false
     }
 
-    $renderedSkill = ConvertTo-SkillDocument -Meta $SkillDefinition.Meta -Body $SkillDefinition.Body -AllowedTools @(ConvertTo-StringArray (Get-Prop $SkillDefinition 'AllowedTools'))
+    $renderedSkill = ConvertTo-SkillDocument -Meta $SkillDefinition.Meta -Body $SkillDefinition.Body -AllowedTools @(ConvertTo-StringArray (Get-Prop $SkillDefinition 'AllowedTools')) -Client $(if ($Target -eq 'codex') { 'codex' } else { 'default' })
     $allSucceeded = Write-ManagedFile -Path (Join-Path $targetDirectory 'SKILL.md') -Content $renderedSkill -ValidationLabel "Skill '$id'"
 
     $excludedItemNames = @('SKILL.md', 'meta.json', 'meta.jsonc', 'meta.vscode.settings.jsonc')
-    if ($Target -eq 'copilot') {
+    if ($Target -in @('copilot', 'codex')) {
         $excludedItemNames += 'commands'
     }
 
-    if ($Target -in @('copilot', 'claude')) {
+    if ($Target -in @('copilot', 'claude', 'codex')) {
         foreach ($excludedItemName in (Get-SkillExcludedItemNames -Meta $SkillDefinition.Meta -Client $Target)) {
             $excludedItemNames += $excludedItemName
         }

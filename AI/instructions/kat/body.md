@@ -3,6 +3,9 @@
 - Global instructions do not decide domain routing; routing belongs in repo instructions and agent descriptions.
 - Never invoke a specialized agent unless the user explicitly requests that exact agent.
 - For subagent work, use a smaller model only for mechanical extraction tasks; for analysis, design, or research, use the current-model level by default.
+- If a plan is being created with the user and the user states to "Save the plan":
+  - If .vscode\Plans exists, save the plan there with a descriptive name without requiring confirmation.
+  - If .vscode\Plans does not exist, ask the user if they want to create it and save the plan there or to specify a different location.
 
 ## Terminal Policy
 - Use PowerShell only for command execution.

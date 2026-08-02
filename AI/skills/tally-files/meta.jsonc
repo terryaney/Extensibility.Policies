@@ -1,11 +1,15 @@
 {
 	"id": "tally-files",
 	"name": "tally-files",
-	"description": "Register new CSV data files for Tally. Validates columns, normalizes data, and registers in settings.yaml. Use when new bank/credit-card CSV exports need onboarding.",
+	"description": "Validate new CSV data files for Tally before tally registers them. Validates columns and normalizes data. Use when new bank/credit-card CSV exports need onboarding.",
 	"applyForUsers": [ "terry.aney" ],
+	"bodyReplacements": {
+		"codex": { "`/tally": "`$tally" }
+	},
 	"enabled": {
 		"copilot": true,
 		"claude": true,
+		"codex": true,
 		"repositories": "C:\\BTR\\TallySpending"
 	}
 }

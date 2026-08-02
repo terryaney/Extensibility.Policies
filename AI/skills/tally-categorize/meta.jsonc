@@ -1,11 +1,15 @@
 {
 	"id": "tally-categorize",
 	"name": "tally-categorize",
-	"description": "Run tally report and categorize unknown transactions. Generates a YAML review file with schema-driven autocomplete, processes user answers, and loops until 0 unknowns remain.",
+	"description": "Run tally, review the categorization.yaml file it generates for unknown transactions, apply answers, and loop until 0 unknowns remain.Run tally, review the categorization.yaml file it generates for unknown transactions, apply answers, and loop until 0 unknowns remain.",
 	"applyForUsers": [ "terry.aney" ],
+	"bodyReplacements": {
+		"codex": { "`/tally": "`$tally" }
+	},
 	"enabled": {
 		"copilot": true,
 		"claude": true,
+		"codex": true,
 		"repositories": "C:\\BTR\\TallySpending"
 	}
 }

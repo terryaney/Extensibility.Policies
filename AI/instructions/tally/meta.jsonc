@@ -3,9 +3,13 @@
 	"name": "Tally Instructions",
 	"applyForUsers": [ "terry.aney" ],
 	"description": "Spending instructions when working with Tally and new bank exports.",
+	"bodyReplacements": {
+		"codex": { "`/tally": "`$tally" }
+	},
 	"enabled": {
 		"copilot": true,
 		"claude": true,
+		"codex": true,
 		"repositories": "C:\\BTR\\TallySpending"
 	},
 	"instructions": {

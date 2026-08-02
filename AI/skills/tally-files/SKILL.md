@@ -1,18 +1,20 @@
 
 
-You are onboarding new CSV data files into the Tally spending configuration. Your ONLY job is to validate formats, normalize data issues, and record files in `tally/data/inventory.yaml`. Do NOT run `tally up`, generate reports, or process unknowns — that belongs to `/tally-categorize`.
+You are onboarding new CSV data files into the Tally spending configuration. Your ONLY job is to validate formats and normalize data issues before tally sees the file. Tally — not this skill — records files in `tally/config/inventory.yaml`, and it only ever appends; do not write to that file yourself. Do NOT run `tally up`, generate reports, or process unknowns — that belongs to `/tally-categorize`.
+
+**Ordering constraint (accepted by the user):** tally registers a file in `tally/config/inventory.yaml` the moment it parses it during `tally up`. If `tally up` runs before this skill sees a file, that file will look already-registered on the next pass and never get validated here. Correct order is always: download → this skill → `/tally-categorize` (which runs `tally up`). If a file was validated out of order, recovery is to hand-delete its entry from `tally/config/inventory.yaml` so it surfaces again.
 
 ## Step 1: Find new files
 
-Compare CSV files in `tally/data/` against `tally/data/inventory.yaml`. Any CSV whose path is not listed in the inventory is new. Run this PowerShell command — do **not** do this comparison manually or from memory:
+Compare CSV files in `tally/data/` against `tally/config/inventory.yaml`. Any CSV whose path is not listed in the inventory is new. Run this PowerShell command — do **not** do this comparison manually or from memory:
 
 ```powershell
-$inv = if (Test-Path tally/data/inventory.yaml) { (Get-Content tally/data/inventory.yaml -Raw | ConvertFrom-Yaml).files.path | ForEach-Object { $_ -replace '^data/', '' } } else { @() }
+$inv = if (Test-Path tally/config/inventory.yaml) { (Select-String -Path tally/config/inventory.yaml -Pattern '^\s*-\s*path:\s*"?(.*?)"?\s*$').Matches | ForEach-Object { Split-Path $_.Groups[1].Value -Leaf } } else { @() }
 Get-ChildItem tally/data -Filter "*.csv" | Where-Object { $inv -notcontains $_.Name } | Select-Object -ExpandProperty Name
 Get-ChildItem tally/data -Filter "*.CSV" | Where-Object { $inv -notcontains $_.Name } | Select-Object -ExpandProperty Name
 ```
 
-If no files are printed, tell the user: "All files are validated. To force re-validation of a file, delete its entry in `tally/data/inventory.yaml` and re-invoke this skill."
+If no files are printed, tell the user: "All files are validated. To force re-validation of a file, delete its entry in `tally/config/inventory.yaml` and re-invoke this skill."
 
 ## Step 2: Determine source for each new file
 
@@ -37,7 +39,7 @@ Check if the filename matches any existing `file:` glob pattern in `settings.yam
    - **Whitespace normalization:** If descriptions have multi-space runs while other files for the same source use single spaces, flag and suggest collapsing. Only after user confirmation.
    - **CHECK description merge:** If CSV has a check-number column AND `CHECK` description rows, flag and suggest rewriting to `CHECK # <number>`. Only after user confirmation.
 
-4. Add entry to `inventory.yaml` with path, source name (from matching settings block), and today's date.
+4. Do not add an entry to `inventory.yaml` yourself — tally registers the file automatically the first time `tally up` parses it (see `/tally-categorize`).
 
 5. **Notify** about any padding performed (e.g., "Padded amazon-chase-visa-2026-Q2.CSV: 7 → 8 columns, added empty Tagging").
 
@@ -64,8 +66,8 @@ Check if the filename matches any existing `file:` glob pattern in `settings.yam
 
 9. Apply post-checks (whitespace, CHECK merge) with confirmation.
 
-10. Add entry to `inventory.yaml`.
+10. Do not add an entry to `inventory.yaml` yourself — tally registers the file automatically the first time `tally up` parses it.
 
 ## Done
 
-Tell user: "Files registered. Invoke `/tally-categorize` to run the report and process unknowns."
+Tell user: "Files validated. Invoke `/tally-categorize` to run the report and process unknowns — tally will register these files in `tally/config/inventory.yaml` as it parses them."
