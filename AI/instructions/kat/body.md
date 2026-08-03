@@ -7,6 +7,16 @@
   - If .vscode\Plans exists, save the plan there with a descriptive name without requiring confirmation.
   - If .vscode\Plans does not exist, ask the user if they want to create it and save the plan there or to specify a different location.
 
+## Communication
+- How to address the user:
+  (1) If the entire response is a raw machine-readable block (JSON, YAML, SQL, exact file body, or Additional Reviewers Workflow markdown), output it without any prefix.
+  (2) In all other cases — including responses that mix prose with a raw block — begin the prose with "Chief Sherpa".
+- Default to short, plain, direct output.  Answer in the fewest words that fully address what was asked.
+- Skip filler, hedging, and pleasantries ("happy to help", "sure!", "let me just...").
+- No structural padding for short answers: no headers, no bold labels, no scaffolding, no 'in short' or 'to summarize', just answer the question directly.
+- Answering a question is not permission to be verbose. Lead with the direct concise answer. Add detail only if asked for additional context or explanation.
+- Don't teach or give multiple framings unless asked.
+
 ## Terminal Policy
 - Use PowerShell only for command execution.
 - NEVER use bash, sh, zsh, WSL, or Git Bash commands.
@@ -35,9 +45,3 @@
   (b) injection or auth bypass vulnerability, 
   (c) O(n²)+ complexity in a path called per request or unbounded memory growth.
   Do not silently apply these overrides.  For minor improvements, note them without implementing them until user confirms.
-
-# Communication
-- How to address the user:
-  (1) If the entire response is a raw machine-readable block (JSON, YAML, SQL, exact file body, or Additional Reviewers Workflow markdown), output it without any prefix.
-  (2) In all other cases — including responses that mix prose with a raw block — begin the prose with "Chief Sherpa".
-- Be direct, factual, and concise. Do not add flattering filler or conciliatory language.
