@@ -1,6 +1,6 @@
 # Development Policies
 
-Shared development policies for all BTR/KAT projects. One repository, one sync command — every developer gets the same coding standards, AI agents, skills, instructions, and tool configurations across VS Code, Copilot CLI, and Claude.
+Shared development policies for all BTR/KAT projects. One repository, one sync command — every developer gets the same coding standards, AI agents, skills, instructions, and tool configurations across VS Code, Copilot CLI, Claude, and Codex CLI.
 
 ## Conduent LLM Models
 
@@ -47,7 +47,9 @@ When policy files are updated, re-sync to pick up the changes. Two options:
 
 ## What Gets Installed
 
-The sync script detects which clients are installed (VS Code, Copilot CLI, Claude) and publishes only to those targets. Undetected clients are skipped, not failed.
+The sync script detects which clients are installed (VS Code, Copilot CLI, Claude, Codex CLI) and publishes only to those targets. Undetected clients are skipped, not failed.
+
+Codex is the one exception to "everything goes everywhere": it is **opt-in per artifact**. VS Code, Copilot CLI, and Claude receive an artifact unless its metadata turns them off; Codex receives nothing unless the metadata explicitly sets `enabled.codex: true`. See [Codex CLI](#codex-cli) for why.
 
 ### Agents
 
@@ -102,9 +104,30 @@ Note: MCP servers are bootstrapped best-effort — if a prerequisite is missing,
 | Windows Terminal settings | Shared Terminal appearance and profile configuration. |
 | VS Code chat settings | Reduces duplicate context noise and enables chat tooling features. Does **not** force `chat.permissions.default`. |
 
+### Codex CLI
+
+Codex support covers **instructions and skills only**. Agents and MCP servers are out of scope for now: Codex uses a different subagent definition format, and it configures MCP through `config.toml` rather than the JSON files the bootstrap helpers write.
+
+| What | Where it lands |
+|------|----------------|
+| Instructions | `AGENTS.md` — `%USERPROFILE%\.codex\AGENTS.md` for global, `<repo>\AGENTS.md` for repo-scoped |
+| Skills | `%USERPROFILE%\.agents\skills\<id>\` for global, `<repo>\.agents\skills\<id>\` for repo-scoped |
+
+Two things make Codex different from the other clients, and both are why it is opt-in:
+
+- **`AGENTS.md` is shared with humans and other tools.** It is a cross-vendor convention file, not a KAT-private tree like `.github/` or `.claude/`. The sync therefore owns only the region between `<!-- kat:start -->` and `<!-- kat:end -->` and leaves everything else in the file alone. Turning Codex off strips that region — including the delimiters — and deletes the file only if the region was all it contained.
+- **`%USERPROFILE%\.agents\skills\` is not exclusively ours.** External primitives installed for Copilot land in the same folder, and uninstalling one deletes the whole `<id>` directory. When a Codex skill id would collide with one, the sync warns and skips rather than writing into the contested folder.
+
+> **Open question — Codex output may not stay Codex-only.** Copilot appears to also read `AGENTS.md`, and to prefer `.agents/skills` over `.github/skills`. That overlap is being investigated and no decision has been made yet; see [.vscode/Plans/codex-conflicts.md](.vscode/Plans/codex-conflicts.md). Until it is settled, treat "enable Codex for this artifact" as "this content may also reach Copilot" and keep that in mind when writing `codex`-targeted bodies.
+
 ### Compatibility Notes
 
 The sync finishes with a deployment matrix and compatibility summary. Some Copilot orchestration features (subagents, handoffs) have no Claude equivalent and are intentionally omitted — the summary calls these out so you know what is and isn't portable across clients.
+
+Two matrix statuses are easy to confuse:
+
+- **`excluded`** — nothing was asked for. The artifact's metadata does not enable that client.
+- **`unsupported`** — something *was* asked for and could not be delivered. You get this when metadata sets `codex: true` on an agent or an MCP server, both of which are out of scope. The footnote under the table says why.
 
 ## User-Restricted Items
 

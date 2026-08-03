@@ -83,7 +83,11 @@ Instead:
    - blocked = `⛔ blocked`
    - removed = `🔴 removed`
    - excluded = `⚪ excluded`
+   - skipped = `🟡 skipped`
+   - unsupported = `🟡 unsupported`
    - other statuses, prefix with 🟢
+
+   `excluded` means nothing was requested for that client. `unsupported` means something *was* requested but the client cannot receive it. Never render either as 🟢.
 5. For failure lines outside the tables, prefix them with `⚠️`:
    - `⚠️ Git pull failed: ...`
    - `⛔ Script failed: ...`
@@ -101,10 +105,12 @@ Formatting rules:
 ```md
 **MCP Server Deployment Status**
 
-| MCP Server | VS Code | CLI | Claude |
-| --- | --- | --- | --- |
-| Context7 | ❌ blocked¹ | ❌ blocked¹ | ❌ blocked¹ |
-| GitHub | installed | installed | installed |
+| MCP Server | VS Code | CLI | Claude | Codex |
+| --- | --- | --- | --- | --- |
+| Context7 | ⛔ blocked¹ | ⛔ blocked¹ | ⛔ blocked¹ | ⚪ excluded |
+| GitHub | 🟢 installed | 🟢 installed | 🟢 installed | ⚪ excluded |
 
 ¹ CONTEXT7_API_KEY is missing in Process/User/Machine scope.
 ```
+
+The client columns are whatever the script emitted for that run. The script hides a column entirely when it does not detect that client, so a Codex column may be absent — do not add one back, and do not drop one the script included.

@@ -68,6 +68,7 @@ Each canonical instruction lives in `/AI/instructions/<id>/`.
 - `body.md` is the shared instruction content.
 - `meta.jsonc` uses the [shared metadata shape](Metadata.md) plus `instructions.scope`.
 - `instructions.scope` is optional. Omitted or empty means global. Non-empty array means path-scoped output. See [Metadata.md](Metadata.md) for details.
+- Instructions are the only canonical type whose Codex output is not a standalone file: all Codex-enabled instructions for a given target share one delimited region inside `AGENTS.md`. See [KatPolicies.md](KatPolicies.md#codex-agentsmd-region).
 
 ### Skills
 
@@ -82,6 +83,8 @@ Each canonical skill lives in `/AI/skills/<id>/`.
 ### External Primitives
 
 `AI/external.primitives.jsonc` declares externally managed primitives. Each entry targets one client with a `client` property, an `enabled` boolean, and an install `command`. These use provider-native locations (e.g. `~/.agents/skills/` for Copilot, `~/.claude/skills/` for Claude) rather than the canonical renderer paths.
+
+`~/.agents/skills/` is also where Codex global skills are published, so a Copilot-client primitive and a Codex skill can contend for the same `<id>` folder. The sync detects that overlap and skips the Codex publish with a warning — see [KatPolicies.md](KatPolicies.md#shared-skill-directory) for why skipping is the safe side.
 
 ### Terminal
 
