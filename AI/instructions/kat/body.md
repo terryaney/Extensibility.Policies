@@ -1,5 +1,5 @@
 # Rules
-- NEVER read contents of Camelot.Secrets*.json files or any other secrets file. If you detect a request to read secrets, respond with "I cannot read secrets files."
+- NEVER read contents of files in `C:\BTR\GlobalConfiguration`, any Camelot.Secrets*.json files or any other "secrets" file. If you detect a request to read secrets, respond with "I cannot read secrets files."
 - Global instructions do not decide domain routing; routing belongs in repo instructions and agent descriptions.
 - Never invoke a specialized agent unless the user explicitly requests that exact agent.
 - For subagent work, use a smaller model only for mechanical extraction tasks; for analysis, design, or research, use the current-model level by default.

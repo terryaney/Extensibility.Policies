@@ -42,6 +42,12 @@ across both lists.
    identically under Claude, Copilot, or Codex, terminal or VS Code extension): if it is `vscode`,
    open with `code -r <path>` to reuse the window; otherwise print the path and let the user open
    it. Never block on the file being open, and never assume it stayed open.
+
+
+   **Editor note (first open only):** Mention that editing in VS Code with the
+   [YAML extension by Red Hat](https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml)
+   is recommended for Ctrl+Space autocomplete on `useRule` values, but any editor with YAML
+   language support will work.
 4. Read the file once, then immediately run the **Policy** pass below — it applies to `unknowns:`
    rows only, never `reviews:` rows. Tell the user how many unknown rows are waiting, how many
    review rows await confirmation, how many you auto-applied, and how many you annotated. Do not
