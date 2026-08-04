@@ -45,3 +45,5 @@
   (b) injection or auth bypass vulnerability, 
   (c) O(n²)+ complexity in a path called per request or unbounded memory growth.
   Do not silently apply these overrides.  For minor improvements, note them without implementing them until user confirms.
+- When reviewing or trimming a PR draft: trim padding, filler, and redundant phrasing freely. Never trim a sentence that describes a behavior change, compatibility break, accepted trade-off, or scope caveat — those are the only things a reviewer cannot recover from the diff.
+- When you hit a genuine decision point or a question whose answer would materially change your next steps, **stop immediately and ask** — do not finish the remaining work optimistically and surface the question at the end. Completing work that depends on an unasked question wastes tokens and forces a redo. One early interrupt is cheaper than one late restart.
