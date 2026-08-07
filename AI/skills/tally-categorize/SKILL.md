@@ -43,11 +43,10 @@ across both lists.
    open with `code -r <path>` to reuse the window; otherwise print the path and let the user open
    it. Never block on the file being open, and never assume it stayed open.
 
-
    **Editor note (first open only):** Mention that editing in VS Code with the
    [YAML extension by Red Hat](https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml)
-   is recommended for Ctrl+Space autocomplete on `useRule` values, but any editor with YAML
-   language support will work.
+   is recommended for Ctrl+Space autocomplete on `useRule`, `edits.category` and `edits.tags` values, 
+   but any editor with YAML language support should work.
 4. Read the file once, then immediately run the **Policy** pass below — it applies to `unknowns:`
    rows only, never `reviews:` rows. Tell the user how many unknown rows are waiting, how many
    review rows await confirmation, how many you auto-applied, and how many you annotated. Do not
@@ -100,9 +99,10 @@ hints?* If no, leave it blank.
 - **When the answer isn't in the data, say nothing.** Amazon order IDs are opaque — no amount of
   reasoning reveals what was bought. That is not a row awaiting a better guess; it is a row only the
   user can answer.
-- **Report the pattern once in chat, not N times in the file.** "24 Amazon rows — the category
-  depends on the item and isn't in the data; tell me what they were" is useful once and noise
-  twenty-four times.
+- **For multi-row patterns, annotate the first occurrence of each sub-group** with the pattern
+  context and cross-reference the related ids. Do not duplicate the same note on every row. For
+  homogeneous groups where every row is identical (e.g. 24 Amazon rows where the category depends on
+  the item and isn't in the data), one note on the first row plus a chat mention is enough.
 
 If a pass produces no notes at all, that is a correct result — say so and move on.
 
