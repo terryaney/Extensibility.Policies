@@ -3,9 +3,6 @@
 	"name": "tally-categorize",
 	"description": "Run tally, review the categorization.yaml file it generates for unknown transactions, apply answers, and loop until 0 unknowns remain.Run tally, review the categorization.yaml file it generates for unknown transactions, apply answers, and loop until 0 unknowns remain.",
 	"applyForUsers": [ "terry.aney" ],
-	"bodyReplacements": {
-		"codex": { "`/tally": "`$tally" }
-	},
 	"enabled": {
 		"copilot": true,
 		"claude": true,

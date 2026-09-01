@@ -50,7 +50,7 @@ Codex is opt-in per artifact: `enabled.copilot` and `enabled.claude` default to 
 
 ⁴ Repo-scoped Codex instructions go to `<repo>/AGENTS.md`. All enabled instructions for one file share a single region, ordered by id, each under a literal `###### <id> instructions ######` heading. Codex has no `applyTo` equivalent, so `instructions.scope` is rendered as a prose preamble and the sync warns that it is a soft gate.
 
-⁵ Repo-scoped Codex skills go to `<repo>/.agents/skills/<id>/`. Codex reads only `name` and `description` from `SKILL.md` frontmatter, so license, compatibility, context, and allowed-tools are dropped. `commands/` and `agents/` folders are not copied — Codex has no analogue for either.
+⁵ Repo-scoped Codex skills go to `<repo>/.agents/skills/<id>/`. Codex reads only `name` and `description` from `SKILL.md` frontmatter, so license, compatibility, and context are dropped. `commands/` and `agents/` folders are not copied — Codex has no analogue for either. All other bundled support files are copied as they are for every other client.
 
 External installable skills use provider-native locations. With the current `skills-cli` behavior, GitHub Copilot installs land under `.agents/skills/` for project scope and `~/.agents/skills/` for global scope, while Claude installs use `.claude/skills/` or `~/.claude/skills/`. Note that this is the same directory Codex uses for its global skills — see [Shared Skill Directory](#shared-skill-directory).
 
@@ -93,6 +93,37 @@ A pre-existing hand-written `AGENTS.md` is not KAT-owned, so the first sync repo
 
 A real collision requires an `external.primitives.jsonc` entry with `"client": "copilot"` whose id matches a Codex-enabled global skill id. The sync computes this as one id-set intersection at publish time; on a hit it warns and lets Codex skip that skill. The reason it warns rather than ignoring: disabling an external primitive runs a recursive delete on `~/.agents/skills/<id>`, which would take the Codex skill folder with it. Silent overlap there is destructive, not merely confusing.
 
+## Vendored vs External Primitives
+
+Third-party skills can enter the repo two ways, and the choice is not a preference — it follows from what the skill needs.
+
+**External primitive** (`AI/external.primitives.jsonc`): the manifest records an install command, and `update.ps1` re-runs it on every sync. Because the command is an `npx skills add ... --yes` re-add, each sync pulls upstream HEAD, so the entry tracks upstream automatically. There is no lockfile and no way to pin a version. KAT does not read, render, or own the resulting files — it only knows the one install path, so that it can delete the folder when the entry is disabled.
+
+**Vendored** (`AI/skills/<id>/`): canonical body plus `meta.jsonc`, rendered per client by the sync.
+
+What the installer genuinely cannot do — these force vendoring today:
+
+| Requirement | Why external cannot serve it |
+|---|---|
+| Body is modified, or needs per-client wording | `npx skills` copies bytes. It has no client markers, `bodyReplacements`, or placeholder substitution, and writes the same file to every target. |
+| Per-user or per-repo gating | `applyForUsers` and `enabled.repositories` are KAT metadata; the installer has no equivalent. |
+| Frontmatter KAT supplies | `context`, the invocation flags, and the `kat-` id prefix come from `meta.jsonc`. An external install gets upstream's frontmatter and upstream's id. |
+| Harness-specific tool names in the body | Cross-client tool translation is `bodyReplacements` / `{{KAT_*}}`, applied only by the renderer. |
+
+Note the asymmetry that makes this easy to get wrong: modifying the **frontmatter** is enough to force vendoring even when the **body** is byte-identical to upstream. `kat-grill-me` and `kat-handoff` are exactly that case — their bodies match upstream, but `meta.jsonc` adds `context: fork`.
+
+A `commands/` subfolder is **not** on that list. Copilot ignores a nested `commands/` folder and only the renderer flattens commands into sibling `<skill>.<command>` skills — but that is a post-install file move, not a content change, so it could in principle be applied to an external install without taking over ownership of the body. Not implemented; see the open design work in [.vscode/Plans/](../Plans/).
+
+The cost of vendoring is drift: `metadata.commit` records what was imported, but nothing compares it to upstream. Re-checking that pin is a manual step.
+
+### Install Path Tracking
+
+The sync does not record where an external primitive landed — `Get-ExternalPrimitiveInstallPath` *derives* the path from the `client` value through a hardcoded switch, and uninstall (`enabled: false`) recursive-deletes that derived path.
+
+That derivation is currently wrong for Copilot. The CLI installs global Copilot skills to `%USERPROFILE%\.copilot\skills\<id>`; the switch returns `%USERPROFILE%\.agents\skills\<id>`. No entry uses `client: copilot` today, so nothing hits it, but a `copilot` entry would install to one path and be "uninstalled" from another, silently orphaning the install. The same mismatch weakens the [Shared Skill Directory](#shared-skill-directory) guard at global scope.
+
+The CLI exposes `skills list` and `skills remove -g -a -s`, so it can report and undo its own installs across every agent it supports. Delegating to it would remove this class of bug rather than fixing one path. It also writes a `skills-lock.json` that `experimental_install` can restore from.
+
 ## Tool Confirmation Notes
 
 KAT Policies can write settings that reduce duplicate context noise and lower approval friction, but it does not force a global default permission mode. The supported approval levers are:
@@ -123,13 +154,13 @@ Claude has a different artifact model from Copilot.
 - Claude commands are slash-invoked Markdown files nested in skill folders (`~/.claude/skills/<id>/commands/`).
 - Claude skills are reusable capability packs under `~/.claude/skills`.
 - Claude agent frontmatter has no equivalent to Copilot `userInvocable: false`.
-- Claude skills have invocation controls (`user-invocable`, `disable-model-invocation`), but those are skill-level concerns, not subagent frontmatter.
+- Claude skills have invocation controls (`user-invocable`, `disable-model-invocation`), but those are skill-level concerns, not subagent frontmatter. They are driven by `skills.userInvocable` / `skills.modelInvocable` and emitted into the shared skill document rather than a Claude-only one — see [Metadata.md](Metadata.md#invocation-flags).
 
 ### Codex CLI
 
 Codex receives instructions and skills only. Agents and MCP servers are deferred, not rejected on principle:
 
-- **Agents** — there is no cheap mapping from canonical `.agent.md` frontmatter to the Codex subagent format.
+- **Agents** — a Codex subagent is `.codex/agents/<id>.toml` (`~/.codex/agents/` global, `<repo>/.codex/agents/` repo-local): a TOML **config layer** — model, reasoning, sandbox, mcp, skills — not a body with frontmatter. There is no mapping from canonical `.agent.md` frontmatter to it; it needs a separate emitter. Recorded as a known gap, not a scheduled task, since agents are currently disabled everywhere and the Codex schema is young.
 - **MCP** — Codex configures servers in `config.toml`, while the three `install-*.ps1` helpers write JSON.
 
 Requesting either anyway (`codex: true` on an agent, or on an MCP server in the shared `mcp` block) produces an `unsupported` cell plus a compatibility warning rather than a silent `excluded`.
@@ -139,15 +170,23 @@ Within the supported types, these differences are worth knowing:
 - `enabled.codex` defaults to `false` while `copilot` and `claude` default to `true`. This is deliberate. Codex writes into shared locations — `AGENTS.md` is a merge target and `~/.agents/skills` is shared with Copilot external primitives — so a silent opt-in would have consequences the other clients do not.
 - Instruction output carries no YAML frontmatter. Copilot's `applyTo:` has no Codex equivalent.
 - `instructions.scope` becomes a prose preamble ("The following applies when working on files matching …") because an `AGENTS.md` body is unconditionally active for its whole subtree. The sync warns that this is a soft gate, not enforcement. A scope of `**` or an absent scope produces no preamble.
-- Skill frontmatter is `name` + `description` only, per Codex's own skill-creator sample. Allowed-tools, license, compatibility, and context are dropped.
+- Skill frontmatter is `name` + `description` only, per Codex's own skill-creator sample. License, compatibility, and context are dropped; the first two silently, `context` with a warning because it is the one with behavioral consequence.
 
 Codex also reads locations KAT deliberately does not write: `$CODEX_HOME/skills` (marked deprecated in Codex source), `.codex/skills/`, and `AGENTS.override.md`. The override file shadows `AGENTS.md` at both scopes, so a hand-written one will silently win over KAT output.
 
-#### Open Question: Overlap With Copilot
+#### Overlap With Copilot
 
-Codex output may not stay Codex-only. Copilot appears to also read `AGENTS.md`, and to prefer `.agents/skills` over `.github/skills`. If that holds, enabling Codex for an artifact means the content can reach Copilot as well, which is not what the per-client `enabled` flags imply.
+Codex output does not stay Codex-only. Copilot reads `AGENTS.md` on both surfaces, and resolves repo skills from `.agents/skills` in VS Code and from `.github/skills` in the CLI. Enabling Codex for an artifact therefore widens its audience to Copilot, which is not what the per-client `enabled` flags suggest on their face. The full read matrix is in [Primitives.md](Primitives.md#cross-harness-reads).
 
-This is observed behavior, not a settled design. No approach has been chosen yet, and the renderer's current split is unchanged pending that decision — see [.vscode/Plans/codex-conflicts.md](../Plans/codex-conflicts.md). Until it is resolved, treat the client-marker and `bodyReplacements` boundaries between `copilot` and `codex` as intent rather than as an enforced guarantee about which client sees what.
+The settled rule: **the renderer does not try to control who reads what — it makes the renders identical wherever trees are co-scanned.** Copilot's directory scan is not configurable and the vendor request for it ([copilot-cli#2689](https://github.com/github/copilot-cli/issues/2689)) is open, so which copy wins the de-duplication lottery is out of KAT's hands. Making the copies match is what removes the consequence.
+
+That rule has three enforced parts, all documented in [Metadata.md](Metadata.md#codex-notes):
+
+- `bodyReplacements.codex` is a renderer **error** for skills and instructions, and legal only for agents.
+- Client markers are treated as non-exclusive in co-scanned artifacts; bodies there must name primitives without an invocation sigil, and the renderer warns when one is found.
+- Skill topology is unchanged. Both `.github/skills` and `.agents/skills` stay — each is load-bearing for one Copilot surface — and `skillDirectories` is deliberately not added to Copilot settings, since it would hand the CLI a second copy of every global skill.
+
+The one place the split *is* real: agents, whose trees are disjoint at both scopes, and global skills without `enabled.codex`, which publish only to `~/.copilot/skills` and `~/.claude/skills` — Copilot never reads the latter.
 
 ### Tool Mapping
 
@@ -158,7 +197,8 @@ Current notable gaps:
 1. `vscode/*` tools have no native Claude equivalent.
 2. GitHub-specific Copilot tools can only be approximated with Claude `Bash` and `WebFetch` unless a closer GitHub integration is added.
 3. Copilot orchestration metadata has no native Claude frontmatter equivalent, so those fields are intentionally omitted.
-4. Tool metadata is not mapped for Codex at all. Codex skill frontmatter carries no allowed-tools field, so tool declarations simply do not travel to Codex output.
+4. Tool metadata is not mapped for Codex at all.
+5. **Skill tool declarations reach no client.** `allowed-tools` is never emitted into skill frontmatter for *any* client, not just Codex. `ConvertTo-SkillDocument` accepts an `$AllowedTools` parameter and never reads it; the fields it emits are `name, description, license, compatibility, context` by default and `name, description` for Codex. This is a renderer-wide gap, and the dead parameter should either be wired up or deleted. Do not read the Codex frontmatter drop as the reason skill tool declarations do not travel — they never did.
 
 ### Matrix Statuses
 
@@ -182,4 +222,4 @@ The remaining compatibility warnings are the intentional Copilot orchestration o
 
 Disabled agents (Code Review, Ultralight suite) do not produce warnings during sync.
 
-Codex adds three more warning kinds, none of which appear unless an artifact opts in: an out-of-scope request (`codex: true` on an agent or MCP server), a scope reduced to a prose preamble, and a global skill id colliding with a Copilot-client external primitive. The summary is dynamic — run `update.ps1` to see the current state.
+Codex adds further warning kinds, none of which appear unless an artifact opts in: an out-of-scope request (`codex: true` on an agent or MCP server), a scope reduced to a prose preamble, a global skill id colliding with a Copilot-client external primitive, and the co-scanning warnings in [Metadata.md](Metadata.md#codex-skill-warnings). The summary is dynamic — run `update.ps1` to see the current state.

@@ -27,10 +27,13 @@ One shape is used across all `meta.jsonc` files. Common properties come first, t
 | `instructions.scope` | string[] | instructions | Optional. Omitted or `[]` means global instruction output. Non-empty array means path-scoped output. Copilot `applyTo` is derived from this field. Codex has no glob-scoping mechanism, so the same value is rendered as a prose preamble instead — see [Codex Notes](#codex-notes). |
 | `license` | string | skills | Optional. Preserve it when present. |
 | `compatibility` | string | skills | Optional compatibility note rendered with the skill. |
+| `context` | string | skills | Optional Claude Code extension. `fork` runs the skill in a forked subagent context instead of the main thread. Emitted into the shared skill frontmatter; Codex drops it, so setting it on a Codex-enabled skill warns — see [Codex Skill Warnings](#codex-skill-warnings). |
 | `metadata` | object | skills | Optional nested metadata. Preserve it when present. |
 | `skills.excludeCommands.copilot` | string[] | skills | Optional list of canonical command basenames to skip when generating Copilot child skills. |
 | `skills.excludeItems.<client>` | string[] | skills | Optional list of top-level bundled files or folders to exclude from rendered output for a specific client. Keys: `copilot`, `claude`, `codex`. |
-| `bodyReplacements` | object | agents, instructions, skills | Optional per-client string substitutions applied after client markers are resolved. See [Body Replacements](#body-replacements). |
+| `skills.modelInvocable` | bool | skills | Canonical model-invocation flag, mirroring `agents.userInvocable`. Defaults to `true`. `false` emits `disable-model-invocation: true` into the shared skill frontmatter **and** writes a Codex `agents/openai.yaml` beside `SKILL.md` carrying `policy.allow_implicit_invocation: false`. See [Invocation Flags](#invocation-flags). |
+| `skills.userInvocable` | bool | skills | Canonical user-invocation flag. Defaults to `true`. `false` emits `user-invocable: false` into the shared skill frontmatter. Codex has no equivalent and drops it silently, so `false` on a Codex-enabled skill warns — see [Codex Skill Warnings](#codex-skill-warnings). |
+| `bodyReplacements` | object | agents, instructions, skills | Optional per-client string substitutions applied after client markers are resolved. **Not permitted under the `codex` key for skills and instructions.** See [Body Replacements](#body-replacements). |
 
 ### Agent Handoffs
 
@@ -89,7 +92,22 @@ Copilot CLI-only text.
 
 Skills deploy a single shared file read by both VS Code and Copilot CLI. Sub-client markers in skill bodies are still resolved, but only plain `<!-- copilot:start -->` markers are meaningful in practice.
 
-Unmarked content goes to every client. A `codex` block is the only way to add Codex-specific wording, and everything wrapped in `copilot`, `copilot-vscode`, `copilot-cli`, or `claude` markers is absent from Codex output — worth checking when enabling Codex on a body that leans heavily on markers.
+Unmarked content goes to every client, and everything wrapped in `copilot`, `copilot-vscode`, `copilot-cli`, or `claude` markers is absent from Codex output — worth checking when enabling Codex on a body that leans heavily on markers.
+
+### Markers Are Not Client-Exclusive
+
+The matrix above describes which block survives into which *rendered file*, not which client ends up reading it. Copilot reads `AGENTS.md`, `.agents/skills`, and `.claude/skills`, so in a co-scanned artifact a `codex` block effectively means **"Codex and Copilot"** and a `claude` block in a repo-scoped skill means **"Claude and Copilot"**. Copilot de-duplicates same-id skills and the winner varies by surface, so a marker-driven difference in a co-scanned tree is served non-deterministically. See [Primitives.md](Primitives.md#cross-harness-reads) for the read matrix.
+
+Markers remain exclusive, and safe, where the trees are disjoint:
+
+| Artifact | Marker safety |
+|---|---|
+| Agents, any scope | Safe. No client reads another client's agent tree. |
+| Global skill, `enabled.codex` off | Safe. `~/.claude/skills` is never read by Copilot. |
+| Global skill, `enabled.codex` on | **Unsafe.** Adds Copilot-readable `~/.agents/skills`. |
+| Repo-scoped skill or instruction | **Unsafe.** All three repo trees are Copilot-readable. |
+
+Where markers are unsafe, bodies must be written so that all clients can read the same text — name primitives without a sigil (the `tally-categorize` skill, not `/tally-categorize` or `$tally-categorize`) and leave per-harness keystroke syntax to user documentation. The renderer warns when it finds a sigil in an unsafe body; see [Sigil Warning](#sigil-warning).
 
 ### Code-Safe Line Markers
 
@@ -120,14 +138,19 @@ claude_only = True
     },
     "claude": {
         "`ask_user`": "`AskUserQuestion`"
-    },
-    "codex": {
-        "`/tally`": "`$tally`"
     }
 }
 ```
 
 Valid client keys are `copilot.vscode`, `copilot.cli`, `copilot` (shared skills), `claude`, and `codex`. Each key's value is a flat object mapping old strings to new strings. Replacements are applied as plain string substitutions in declared order.
+
+### `codex` Replacements Are an Error for Skills and Instructions
+
+A `bodyReplacements.codex` block on a skill or instruction meta is a renderer **error**, not a warning. Codex skill and instruction output is co-read by Copilot at those paths — `.agents/skills`, `~/.agents/skills`, and `<repo>/AGENTS.md` — so a substitution intended for Codex alone lands in Copilot's context too, and where Copilot also resolves a non-Codex copy of the same id, which text wins varies by surface. The ban is unconditional rather than scoped to co-read paths, so that adding `enabled.repositories` to an artifact cannot quietly turn a working substitution into a leak.
+
+`bodyReplacements.codex` remains legal for **agents**, whose trees are disjoint at both scopes.
+
+The error text states the reason ("codex output is co-read by Copilot at this path") so the rule can be re-evaluated if the vendor ever makes Copilot's scan configurable ([copilot-cli#2689](https://github.com/github/copilot-cli/issues/2689)).
 
 ### Sidecar Overrides
 
@@ -141,11 +164,48 @@ Codex is the one client that behaves differently at the metadata level, so its r
 - **Instructions and skills only.** `enabled.codex` on an agent, or `codex: true` on an MCP server in the shared `mcp` block, is accepted by the parser but reports `unsupported` in the deployment matrix with a footnote explaining why. Nothing is written.
 - **No instruction frontmatter.** Codex instruction output carries no YAML header; there is no `applyTo` equivalent.
 - **`instructions.scope` degrades to prose.** A scope of `["**/*.cs", "**/*.ts"]` renders as a generated sentence above the body and raises a compatibility warning that it is a soft gate. `["**"]` or an absent scope renders nothing extra.
-- **Skill frontmatter is `name` + `description` only.** `license`, `compatibility`, `context`, and allowed-tools are dropped, per Codex's documented frontmatter contract.
-- **Bundled `commands/` and `agents/` folders are not copied.** Codex has no analogue for either.
+- **Skill frontmatter is `name` + `description` only.** `license`, `compatibility`, and `context` are dropped, per Codex's documented frontmatter contract. (`allowed-tools` is never emitted for any client — see [KatPolicies.md](KatPolicies.md#tool-mapping).)
+- **Bundled `commands/` and `agents/` folders are not copied.** Codex has no analogue for either. Every other support file — `references/`, `templates/`, `scripts/`, loose files — travels to Codex like any other client.
 - **Global skill ids can collide.** A Codex-enabled global skill whose id matches a `"client": "copilot"` entry in `AI/external.primitives.jsonc` is skipped with a warning, because both would occupy `~/.agents/skills/<id>/`.
+- **Codex output is mostly not Codex-only.** `.agents/skills`, `~/.agents/skills`, and `<repo>/AGENTS.md` are all read by Copilot; only `~/.codex/AGENTS.md` is Codex's alone. Enabling Codex on an artifact widens its audience, so treat `codex` markers as "Codex and Copilot" — see [Markers Are Not Client-Exclusive](#markers-are-not-client-exclusive).
 
-> **Not yet settled:** `codex` markers and `codex` body replacements express intent about which client sees what, but Copilot appears to also read `AGENTS.md` and to prefer `.agents/skills` over `.github/skills`. Whether and how to separate them is an open question — see [.vscode/Plans/codex-conflicts.md](../Plans/codex-conflicts.md). Author `codex` blocks as though Copilot might also read them until that is decided.
+### Invocation Flags
+
+`disable-model-invocation` and `user-invocable` are Claude Code frontmatter extensions, but the renderer emits them into the **shared** skill document — the same bytes go to the Claude and Copilot copies — so that co-scanned trees stay byte-identical and the de-duplication winner stops mattering. Copilot ignores the keys.
+
+Codex takes neither. It gets `agents/openai.yaml` beside its `SKILL.md` instead, written only when `skills.modelInvocable` is `false`:
+
+```yaml
+policy:
+  allow_implicit_invocation: false
+```
+
+There is no Codex expression of `userInvocable`, which is why setting it to `false` on a Codex-enabled skill warns.
+
+### Sigil Warning
+
+The renderer warns when a **skill or instruction** body contains an invocation sigil — `/id`, `$id`, `/id:sub`, or `/id.sub` — matching a known primitive id, and the artifact is **repo-scoped** or **Codex-enabled at any scope**. Those are exactly the artifacts whose trees are co-scanned, where a client-specific sigil is served to the wrong client. Agents are not audited; their trees are disjoint at both scopes.
+
+It is a warning rather than an error because sigils appear legitimately in prose often enough that a hard stop would eventually block something valid. The warning is what makes the scope rule self-policing: a global skill that later gains `enabled.repositories` or `enabled.codex: true` trips it the moment its trees become co-scanned.
+
+### Codex Skill Warnings
+
+These fire only when `enabled.codex` is `true` on a skill.
+
+| Condition | Reason |
+|---|---|
+| `context` declared | Codex drops it, so the Codex/Copilot copy loses the context mode. |
+| `skills.userInvocable: false` | No Codex equivalent; the restriction silently does not apply there. |
+| `allowed-tools` declared | Dormant — never emitted for any client today (see [KatPolicies.md](KatPolicies.md#tool-mapping)). Retained so whoever wires it up does not have to rediscover the drop. |
+| `commands/` or `agents/` subfolder present | Both are excluded from Codex output, and because VS Code Copilot resolves `.agents/skills`, Copilot loses them too. |
+
+Each is a behavioral capability that goes missing from the copy Copilot resolves. `license` and `compatibility` are also dropped by Codex and deliberately do **not** warn — the loss is informational only.
+
+### `@`-Imports Are Rejected in `AGENTS.md` Bodies
+
+An `@relative/path` import in a **Codex-enabled instruction** body is a renderer **error**. That body is spliced into `AGENTS.md`, where Copilot expands the import and Codex — which has no import mechanism — ingests the line as literal text, so the one file means two different things to its two readers. Inline the content instead.
+
+`CLAUDE.md`-bound bodies are unaffected; both of their readers expand imports.
 
 ## Shared Mappings
 

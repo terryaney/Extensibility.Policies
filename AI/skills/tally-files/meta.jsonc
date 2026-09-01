@@ -3,9 +3,6 @@
 	"name": "tally-files",
 	"description": "Validate new CSV data files for Tally before tally registers them. Validates columns and normalizes data. Use when new bank/credit-card CSV exports need onboarding.",
 	"applyForUsers": [ "terry.aney" ],
-	"bodyReplacements": {
-		"codex": { "`/tally": "`$tally" }
-	},
 	"enabled": {
 		"copilot": true,
 		"claude": true,

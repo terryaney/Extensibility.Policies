@@ -56,7 +56,7 @@ across both lists.
 5. Wait for the user — typed answers in the file, a chat instruction, or both. See **Phrasebook**.
 6. Re-read the YAML fresh, apply what was asked (see **Applying answers**), then go to step 1.
 7. If `merchants.rules` was modified this session, regenerate the all-rules report via
-   `/tally-rules`. Then open the HTML report in the browser for the user.
+   the `tally-rules` skill. Then open the HTML report in the browser for the user.
 
 ## Policy: auto-apply vs. annotate thresholds
 

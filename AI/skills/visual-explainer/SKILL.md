@@ -22,7 +22,9 @@ Detailed prompt templates are available via skills. Invoke each as a namespaced 
 | `plan-review` | Compare a plan against the codebase with risk assessment |
 | `project-recap` | Mental model snapshot for context-switching back to a project |
 | `fact-check` | Verify accuracy of a document against actual code |
+<!-- claude:start -->
 | `share` | Deploy an HTML page to Vercel and get a live URL |
+<!-- claude:end -->
 
 ## Workflow
 

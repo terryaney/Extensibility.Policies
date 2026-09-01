@@ -3,9 +3,6 @@
 	"name": "tally-rules",
 	"description": "Generate rules reports for Tally — all rules, session rules, or new rules. Use when the user asks for a rules report, rules summary, or wants to see what rules exist.",
 	"applyForUsers": [ "terry.aney" ],
-	"bodyReplacements": {
-		"codex": { "`/tally": "`$tally" }
-	},
 	"enabled": {
 		"copilot": true,
 		"claude": true,

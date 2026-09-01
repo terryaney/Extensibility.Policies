@@ -1,8 +1,8 @@
 
 
-You are onboarding new CSV data files into the Tally spending configuration. Your ONLY job is to validate formats and normalize data issues before tally sees the file. Tally — not this skill — records files in `tally/config/inventory.yaml`, and it only ever appends; do not write to that file yourself. Do NOT run `tally up`, generate reports, or process unknowns — that belongs to `/tally-categorize`.
+You are onboarding new CSV data files into the Tally spending configuration. Your ONLY job is to validate formats and normalize data issues before tally sees the file. Tally — not this skill — records files in `tally/config/inventory.yaml`, and it only ever appends; do not write to that file yourself. Do NOT run `tally up`, generate reports, or process unknowns — that belongs to the `tally-categorize` skill.
 
-**Ordering constraint (accepted by the user):** tally registers a file in `tally/config/inventory.yaml` the moment it parses it during `tally up`. If `tally up` runs before this skill sees a file, that file will look already-registered on the next pass and never get validated here. Correct order is always: download → this skill → `/tally-categorize` (which runs `tally up`). If a file was validated out of order, recovery is to hand-delete its entry from `tally/config/inventory.yaml` so it surfaces again.
+**Ordering constraint (accepted by the user):** tally registers a file in `tally/config/inventory.yaml` the moment it parses it during `tally up`. If `tally up` runs before this skill sees a file, that file will look already-registered on the next pass and never get validated here. Correct order is always: download → this skill → the `tally-categorize` skill (which runs `tally up`). If a file was validated out of order, recovery is to hand-delete its entry from `tally/config/inventory.yaml` so it surfaces again.
 
 ## Step 1: Find new files
 
@@ -39,7 +39,7 @@ Check if the filename matches any existing `file:` glob pattern in `settings.yam
    - **Whitespace normalization:** If descriptions have multi-space runs while other files for the same source use single spaces, flag and suggest collapsing. Only after user confirmation.
    - **CHECK description merge:** If CSV has a check-number column AND `CHECK` description rows, flag and suggest rewriting to `CHECK # <number>`. Only after user confirmation.
 
-4. Do not add an entry to `inventory.yaml` yourself — tally registers the file automatically the first time `tally up` parses it (see `/tally-categorize`).
+4. Do not add an entry to `inventory.yaml` yourself — tally registers the file automatically the first time `tally up` parses it (see the `tally-categorize` skill).
 
 5. **Notify** about any padding performed (e.g., "Padded amazon-chase-visa-2026-Q2.CSV: 7 → 8 columns, added empty Tagging").
 
@@ -70,4 +70,4 @@ Check if the filename matches any existing `file:` glob pattern in `settings.yam
 
 ## Done
 
-Tell user: "Files validated. Invoke `/tally-categorize` to run the report and process unknowns — tally will register these files in `tally/config/inventory.yaml` as it parses them."
+Tell user: "Files validated. Invoke the `tally-categorize` skill to run the report and process unknowns — tally will register these files in `tally/config/inventory.yaml` as it parses them."

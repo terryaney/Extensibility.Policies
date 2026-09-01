@@ -34,10 +34,10 @@ All tally report generation, file registration, transaction categorization, and 
 
 | Skill | Purpose |
 |---|---|
-| `/tally-files` | Register new CSV data files in `settings.yaml`. Validates columns, normalizes data, handles headers. |
-| `/tally-categorize` | Run `tally up`, discover unknowns, generate YAML review file, process answers, create/update rules. Loop until 0 unknowns. |
-| `/tally-rules` | Generate rules reports (all rules, session rules, new rules). |
+| `tally-files` | Register new CSV data files in `settings.yaml`. Validates columns, normalizes data, handles headers. |
+| `tally-categorize` | Run `tally up`, discover unknowns, generate YAML review file, process answers, create/update rules. Loop until 0 unknowns. |
+| `tally-rules` | Generate rules reports (all rules, session rules, new rules). |
 
-If the user says "tally up", "run tally", "generate report", "process unknowns", "categorize", or equivalent without a skill invoked, respond: "Use `/tally-files` if you have new CSVs to register, or `/tally-categorize` to run the report and process unknowns."
+If the user says "tally up", "run tally", "generate report", "process unknowns", "categorize", or equivalent without a skill invoked, respond: "Use the `tally-files` skill if you have new CSVs to register, or the `tally-categorize` skill to run the report and process unknowns."
 
-If the user asks for a rules report without a skill invoked, respond: "Use `/tally-rules` to generate a rules report."
+If the user asks for a rules report without a skill invoked, respond: "Use the `tally-rules` skill to generate a rules report."

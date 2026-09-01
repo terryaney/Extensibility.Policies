@@ -31,7 +31,7 @@ Save to `./tally/output/rules_report.html` and open in browser.
 Triggered by: "rules created", "new rules", "session rules"
 
 Generate a report with two tables:
-1. **Newly created rules** — only rules created during the most recent `/tally-categorize` session.
+1. **Newly created rules** — only rules created during the most recent `tally-categorize` session.
 2. **Remaining unknowns** — current unknowns from `tally discover`.
 
 Save to `./tally/output/rules_processing_report.html` and open in browser.

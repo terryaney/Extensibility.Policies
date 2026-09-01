@@ -1,13 +1,13 @@
 {
 	"id": "kat-grill-me",
 	"name": "kat-grill-me",
-	"description": "Grill the user relentlessly about a plan or design. Use when the user wants to stress-test a plan before building, or uses any 'grill' trigger phrases.",
+	"description": "Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases.",
 	"context": "fork",
 	"metadata": {
 		"author": "mattpocock",
 		"repository": "https://github.com/mattpocock/skills/",
 		"path": "skills/productivity/grilling/SKILL.md",
-		"commit": "e5932a7"
+		"commit": "1495d01"
 	},
 	"enabled": {
 		"copilot": true,

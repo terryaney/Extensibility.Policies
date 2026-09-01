@@ -48,9 +48,9 @@ Codex is opt-in per instruction — the column above shows which currently set `
 | primitive-evaluator | Evaluate and improve prompt primitives (skills, agents, instructions). | ✅ | ✅ | — | — |
 | visual-explainer | Generate self-contained HTML pages that visually explain systems and data. | ✅ | ✅ | ✅ | — |
 
-Skills with a `commands/` folder also generate child skills for Copilot (e.g. `visual-explainer.diff-review`) and nested command files for Claude. Codex receives neither — `commands/` and `agents/` folders are excluded from Codex skill output.
+Skills with a `commands/` folder also generate child skills for Copilot (e.g. `visual-explainer.diff-review`) and nested command files for Claude. Codex receives neither — see [Command Shapes](#command-shapes).
 
-This table lists the unrestricted skills. User-restricted skills (see the `applyForUsers` note in [readme.md](../../readme.md)) are omitted, and the repo-scoped Tally skills are currently the only Codex-enabled ones. Codex skill output carries `name` + `description` frontmatter only; license, compatibility, context, and allowed-tools are dropped.
+This table lists the unrestricted skills. User-restricted skills (see the `applyForUsers` note in [readme.md](../../readme.md)) are omitted, and the repo-scoped Tally skills are currently the only Codex-enabled ones. For what Codex skill output actually carries, see [Codex Skill Output](#codex-skill-output).
 
 ### External Primitives
 
@@ -63,6 +63,75 @@ External primitives are declared in `AI/external.primitives.jsonc` and installed
 When `enabled` is `false`, the updater removes the previously installed external primitive from the client's known install path.
 
 > Copilot-client external primitives install to `~/.agents/skills/<id>/`, which is also where Codex global skills go. Removing a disabled primitive is a recursive delete of that whole `<id>` folder, so a Codex skill sharing the id would be destroyed with it. The sync detects the id overlap up front, warns, and skips the Codex publish. There are no Copilot-client external primitives today, so the collision surface is currently zero.
+
+## Cross-Harness Reads
+
+Copilot is the only client that reads another client's trees. Every cell below is confirmed from vendor documentation, not inferred.
+
+| Location | Copilot | Claude Code | Codex |
+|---|:---:|:---:|:---:|
+| `<repo>/.github/skills/<id>/` | reads (CLI resolves here) | — | — |
+| `<repo>/.claude/skills/<id>/` | **reads** | reads | — |
+| `<repo>/.agents/skills/<id>/` | **reads** (VS Code resolves here) | — | reads |
+| `~/.copilot/skills/<id>/` | reads | — | — |
+| `~/.claude/skills/<id>/` | — | reads | — |
+| `~/.agents/skills/<id>/` | **reads** (VS Code) | — | reads |
+| `<repo>/AGENTS.md` | **reads** (both surfaces) | — | reads |
+| `<repo>/CLAUDE.md` | **reads** | reads | — |
+| `<repo>/.github/instructions/*.instructions.md` | reads | — | — |
+| `<repo>/.claude/rules/*.md` | — | reads | — |
+| `~/.codex/AGENTS.md` | — | — | reads |
+| `<repo>/.github/agents/<id>.agent.md` | reads | — | — |
+| `<repo>/.claude/agents/<id>.md` | — | reads | — |
+| `<repo>/.codex/agents/<id>.toml` | — | — | reads |
+
+Consequences:
+
+- Claude Code is fully isolated — `.claude/skills`, `~/.claude/skills`, and `CLAUDE.md` only. It reads neither `AGENTS.md` nor `.agents/skills`.
+- Agent trees are disjoint at both scopes. No client reads another client's agents, so per-client divergence in an agent body is always safe.
+- Skills de-duplicate by id; instructions concatenate. A second skill copy costs nothing once the copies match, but a second instruction copy is loaded *in addition*, and Copilot CLI only de-dupes files that are byte-identical.
+
+### Copilot CLI vs VS Code Precedence
+
+The two Copilot surfaces resolve repo skills from different trees: **Copilot CLI resolves `.github/skills`, VS Code Copilot resolves `.agents/skills`.** Both are load-bearing — dropping either removes skills from one surface. Where the same id exists in more than one readable tree, Copilot picks a single winner and the winner varies by surface, so the renders in co-scanned trees must be identical rather than per-client.
+
+### Scope-Dependent Co-Scanning
+
+Whether Copilot sees Claude or Codex skill output depends on the artifact's scope.
+
+| Scope | Published skill trees | Copilot-readable |
+|---|---|---|
+| Repo, `enabled.codex: false` | `.github/skills`, `.claude/skills` | both |
+| Repo, `enabled.codex: true` | `.github/skills`, `.claude/skills`, `.agents/skills` | all three |
+| Global, `enabled.codex: false` | `~/.copilot/skills`, `~/.claude/skills` | `~/.copilot/skills` only — **disjoint** |
+| Global, `enabled.codex: true` | `~/.copilot/skills`, `~/.claude/skills`, `~/.agents/skills` | `~/.copilot/skills` and `~/.agents/skills` |
+
+Copilot never reads `~/.claude/skills`, so a global non-Codex skill publishes to disjoint trees and client-specific wording there is correct. Enabling Codex on a global skill adds `~/.agents/skills`, which Copilot does read, and the skill becomes co-scanned. This scope boundary is what the sigil-neutrality and marker rules key off — see [Metadata.md](Metadata.md#client-markers).
+
+### Command Shapes
+
+Commands have a different shape in each client. A body that documents its own invocation is therefore client-specific by construction, which is why it is unsafe in a co-scanned tree.
+
+| Client | Shape | Invoked as |
+|---|---|---|
+| Claude | Nested in the skill's `commands/` folder | `/skill:command` |
+| Copilot | Flattened into a sibling skill (`~/.copilot/skills/visual-explainer.diff-review/`) | `visual-explainer.diff-review` |
+| Codex | No analogue | — |
+
+### Codex Skill Output
+
+Codex skill frontmatter is `name` + `description` only.
+
+| Dropped field | Consequence | Warned |
+|---|---|---|
+| `license` | Informational | no |
+| `compatibility` | Informational | no |
+| `context` | Behavioral — loses the Claude context mode | yes |
+| `allowed-tools` | Behavioral in principle; never emitted for any client today | yes |
+
+`license` and `compatibility` are deliberately silent — a warning that fires on harmless metadata is one that gets ignored.
+
+Support files **do** travel to Codex. Only the `commands/` and `agents/` subfolders are excluded; `references/`, `templates/`, `scripts/`, and loose files are copied like any other client.
 
 ## Tools
 

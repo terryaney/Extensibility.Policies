@@ -726,8 +726,25 @@ function Publish-Instructions {
         $instructionMatrixValue = if ($instructionRepositories.Count -gt 0) { 'repository' } else { 'global' }
         $instructionScopedValue = if ($instructionScope.Count -gt 0) { 'yes' } else { 'no' }
         $repoMissing = $false
+        # Instructions concatenate rather than de-duplicate, so a repo-scoped instruction published to
+        # both AGENTS.md and .github/instructions reaches Copilot twice. Copilot reads AGENTS.md at both
+        # surfaces, so the AGENTS.md copy alone keeps coverage intact. Global scope is unaffected: codex
+        # writes to ~/.codex/AGENTS.md, which Copilot never reads.
+        $codexServesCopilot = $instructionRepositories.Count -gt 0 -and (Test-CodexEnabled -Enabled $enabled)
+        $codexServesCopilotDetail = 'codex enabled: AGENTS.md serves Copilot; .github/instructions omitted to avoid duplicate rules'
 
-        if (Test-CopilotSubClientEnabled -Enabled $enabled -SubClient 'vscode') {
+        if ($codexServesCopilot) {
+            foreach ($copilotTarget in @('vscode', 'copilotCli')) {
+                $subClient = if ($copilotTarget -eq 'vscode') { 'vscode' } else { 'cli' }
+                if (Test-CopilotSubClientEnabled -Enabled $enabled -SubClient $subClient) {
+                    Add-DeploymentRecord -Category 'instruction' -Id $id -Target $copilotTarget -Status 'skipped' -Detail $codexServesCopilotDetail -MatrixScoped $instructionScopedValue
+                }
+                else {
+                    Add-DeploymentRecord -Category 'instruction' -Id $id -Target $copilotTarget -Status 'disabled' -MatrixValue 'excluded' -MatrixScoped $instructionScopedValue
+                }
+            }
+        }
+        elseif (Test-CopilotSubClientEnabled -Enabled $enabled -SubClient 'vscode') {
             $content = ConvertTo-CopilotInstructionDocument -Meta $definition.Meta -Body $definition.Body -Client 'vscode'
             $publishTargets = New-Object System.Collections.Generic.List[string]
             $succeeded = $true
@@ -761,7 +778,10 @@ function Publish-Instructions {
             Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'vscode' -Status 'disabled' -MatrixValue 'excluded' -MatrixScoped $instructionScopedValue
         }
 
-        if (Test-CopilotSubClientEnabled -Enabled $enabled -SubClient 'cli') {
+        if ($codexServesCopilot) {
+            # Recorded alongside the vscode target above.
+        }
+        elseif (Test-CopilotSubClientEnabled -Enabled $enabled -SubClient 'cli') {
             if ($instructionRepositories.Count -gt 0) {
                 # Repo-scoped: copilotCli reads .github/instructions/ — covered by the vscode deployment above
                 Add-DeploymentRecord -Category 'instruction' -Id $id -Target 'copilotCli' -Status $(if ($repoMissing) { 'blocked' } else { 'ok' }) -MatrixValue $(if ($repoMissing) { $null } else { 'repository' }) -Detail $(if ($repoMissing) { "destination '$($missingRepoPaths -join '; ')' does not exist" } else { $null }) -MatrixScoped $instructionScopedValue
@@ -1587,8 +1607,9 @@ function Get-RemovedPathInfo {
         return [pscustomobject]@{ Category = 'agent'; Id = $id; Target = 'vscode' }
     }
 
-    # Agents folder
-    if ($dirName -eq 'agents' -or $parentDir -eq 'agents') {
+    # Agents folder. A skill may own an 'agents' subfolder (helper agents, or the codex
+    # agents/openai.yaml sidecar), so anything under a skills tree belongs to the skill.
+    if (($dirName -eq 'agents' -or $parentDir -eq 'agents') -and $Path -notmatch '\\skills\\') {
         if ($Path -match '\\\.claude\\') {
             return [pscustomobject]@{ Category = 'agent'; Id = $id; Target = 'claude' }
         }
@@ -2081,6 +2102,9 @@ function Invoke-PolicySync {
     $allAgentDefinitions = @($agentDefinitions) + @($skillHelperAgentDefinitions)
     $externalPrimitiveDefinitions = Get-ExternalPrimitiveDefinitions
     $mcpSettings = Get-SharedMcpSettings
+
+    # Runs before any managed root is cleared: a policy violation must not leave the trees half-published.
+    Assert-CrossHarnessPolicy -SkillDefinitions $skillDefinitions -InstructionDefinitions $instructionDefinitions -AgentDefinitions $allAgentDefinitions
 
     try {
         $managedContexts = Get-ManagedContexts -Roots $roots -AgentDefinitions $allAgentDefinitions -InstructionDefinitions $instructionDefinitions -SkillDefinitions $skillDefinitions
@@ -2680,6 +2704,181 @@ function Resolve-BodyReplacements {
     }
 
     return $resolved
+}
+
+function Test-CodexEnabled {
+    param([object]$Enabled)
+
+    # Mirrors the publish-time default: codex is opt-in everywhere.
+    return (ConvertTo-BoolValue (Get-Prop $Enabled 'codex') $false)
+}
+
+function Test-CoScannedArtifact {
+    param(
+        [object]$Enabled,
+        [object[]]$Repositories
+    )
+
+    # Copilot reads .github/skills, .claude/skills and .agents/skills at repository scope, so every
+    # repo-scoped artifact is co-scanned. At global scope ~/.claude/skills is invisible to Copilot, so
+    # only codex participation (which adds the Copilot-readable ~/.agents/skills) makes it co-scanned.
+    if (@($Repositories).Count -gt 0) { return $true }
+    return (Test-CodexEnabled -Enabled $Enabled)
+}
+
+function Get-KnownPrimitiveIds {
+    param(
+        [object[]]$SkillDefinitions,
+        [object[]]$InstructionDefinitions,
+        [object[]]$AgentDefinitions
+    )
+
+    $ids = New-Object System.Collections.Generic.HashSet[string] ([System.StringComparer]::OrdinalIgnoreCase)
+
+    foreach ($definition in (@($SkillDefinitions) + @($InstructionDefinitions) + @($AgentDefinitions))) {
+        if ($null -eq $definition) { continue }
+        $id = [string](Get-Prop $definition 'Id')
+        if (-not [string]::IsNullOrWhiteSpace($id)) { [void]$ids.Add($id) }
+    }
+
+    # Commands are invoked as <skill>:<command> in Claude and <skill>.<command> in Copilot; both
+    # resolve back to the same canonical skill id for sigil purposes.
+    foreach ($definition in @($SkillDefinitions)) {
+        if ($null -eq $definition) { continue }
+        $skillId = [string](Get-Prop $definition 'Id')
+        foreach ($commandFile in @(Get-Prop $definition 'CommandFiles')) {
+            if ($null -eq $commandFile) { continue }
+            [void]$ids.Add($skillId + '.' + $commandFile.BaseName)
+        }
+    }
+
+    return $ids
+}
+
+function Get-InvocationSigilMatches {
+    param(
+        [string]$Content,
+        [System.Collections.Generic.HashSet[string]]$KnownIds
+    )
+
+    $found = New-Object System.Collections.Generic.List[string]
+    if ([string]::IsNullOrWhiteSpace($Content) -or $null -eq $KnownIds) {
+        return $found.ToArray()
+    }
+
+    # A sigil is a leading / or $ that is not part of a path or URL, followed by a primitive id and an
+    # optional :command / .command suffix.
+    $pattern = '(?<![\w./\\$-])[/$]([A-Za-z0-9][A-Za-z0-9_-]*)(?:([:.])([A-Za-z0-9][A-Za-z0-9_-]*))?'
+    foreach ($match in [regex]::Matches($Content, $pattern)) {
+        $head = $match.Groups[1].Value
+        $qualified = $head
+        if ($match.Groups[3].Success) {
+            $qualified = $head + '.' + $match.Groups[3].Value
+        }
+
+        if ($KnownIds.Contains($qualified) -or $KnownIds.Contains($head)) {
+            $text = $match.Value
+            if (-not $found.Contains($text)) { $found.Add($text) }
+        }
+    }
+
+    return $found.ToArray()
+}
+
+function Get-AgentsMarkdownImports {
+    param([string]$Content)
+
+    $found = New-Object System.Collections.Generic.List[string]
+    if ([string]::IsNullOrWhiteSpace($Content)) {
+        return $found.ToArray()
+    }
+
+    # Copilot expands @relative/path inside AGENTS.md; Codex has no import mechanism and ingests the
+    # line as literal text, so the two clients read different instructions from the same file.
+    foreach ($match in [regex]::Matches($Content, '(?m)(?<![\w`])@([./\\][^\s`]+|[A-Za-z0-9_.-]+[/\\][^\s`]+)')) {
+        $text = $match.Value
+        if (-not $found.Contains($text)) { $found.Add($text) }
+    }
+
+    return $found.ToArray()
+}
+
+function Assert-CrossHarnessPolicy {
+    param(
+        [object[]]$SkillDefinitions,
+        [object[]]$InstructionDefinitions,
+        [object[]]$AgentDefinitions
+    )
+
+    $errors = New-Object System.Collections.Generic.List[string]
+    $knownIds = Get-KnownPrimitiveIds -SkillDefinitions $SkillDefinitions -InstructionDefinitions $InstructionDefinitions -AgentDefinitions $AgentDefinitions
+
+    $auditable = @(
+        @($SkillDefinitions | ForEach-Object { [pscustomobject]@{ Kind = 'skill'; Definition = $_ } })
+        @($InstructionDefinitions | ForEach-Object { [pscustomobject]@{ Kind = 'instruction'; Definition = $_ } })
+    )
+
+    foreach ($entry in $auditable) {
+        $definition = $entry.Definition
+        if ($null -eq $definition) { continue }
+
+        $id = [string](Get-Prop $definition 'Id')
+        $meta = Get-Prop $definition 'Meta'
+        $enabled = Get-Prop $definition 'Enabled'
+        $repositories = @(Get-Prop $definition 'Repositories')
+        $codexEnabled = Test-CodexEnabled -Enabled $enabled
+
+        # A codex-only substitution cannot stay codex-only: Copilot reads AGENTS.md and .agents/skills.
+        if ($null -ne (Get-Prop (Get-Prop $meta 'bodyReplacements') 'codex')) {
+            $errors.Add("$($entry.Kind) '$id': bodyReplacements.codex is not allowed — codex output is co-read by Copilot at this path, so the substitution leaks into Copilot's context. Write the body so it needs no substitution. (Agents may still use bodyReplacements.codex; their trees are disjoint.)")
+        }
+
+        if (Test-CoScannedArtifact -Enabled $enabled -Repositories $repositories) {
+            $sigils = @(Get-InvocationSigilMatches -Content (Get-Prop $definition 'Body') -KnownIds $knownIds)
+            if ($sigils.Count -gt 0) {
+                $scopeReason = if ($repositories.Count -gt 0) { 'repository-scoped' } else { 'codex-enabled' }
+                Add-Warning "$($entry.Kind) '$id': $scopeReason output is co-scanned by Copilot, so invocation syntax must stay neutral — found $($sigils -join ', '). Name the primitive without a sigil instead."
+            }
+        }
+
+        if ($codexEnabled) {
+            foreach ($import in @(Get-AgentsMarkdownImports -Content (Get-Prop $definition 'Body'))) {
+                if ($entry.Kind -eq 'instruction') {
+                    $errors.Add("instruction '$id': '$import' is an @-import. Copilot expands these inside AGENTS.md and Codex ingests them as literal text, so the two clients would read different instructions. Inline the content instead.")
+                }
+            }
+        }
+    }
+
+    foreach ($definition in @($SkillDefinitions)) {
+        if ($null -eq $definition) { continue }
+        if (-not (Test-CodexEnabled -Enabled (Get-Prop $definition 'Enabled'))) { continue }
+
+        $id = [string](Get-Prop $definition 'Id')
+        $meta = Get-Prop $definition 'Meta'
+        $skillMeta = Get-Prop $meta 'skills'
+
+        # Codex keeps name + description only. Dropping license/compatibility costs nothing at runtime,
+        # so only behavioural fields warn — and VS Code Copilot resolves .agents/skills, so it loses them too.
+        $droppedFields = New-Object System.Collections.Generic.List[string]
+        if (-not [string]::IsNullOrWhiteSpace([string](Get-Prop $meta 'context'))) { $droppedFields.Add('context') }
+        if ($null -ne (Get-Prop $meta 'allowedTools') -or $null -ne (Get-Prop $meta 'allowed-tools')) { $droppedFields.Add('allowed-tools') }
+        if (-not (ConvertTo-BoolValue (Get-Prop $skillMeta 'userInvocable') $true)) { $droppedFields.Add('skills.userInvocable') }
+
+        if ($droppedFields.Count -gt 0) {
+            Add-Warning "skill '$id': codex drops $($droppedFields -join ', '), and VS Code Copilot resolves the codex copy from .agents/skills — the behaviour is silently absent there."
+        }
+
+        foreach ($subfolder in @('commands', 'agents')) {
+            if (Test-Path -LiteralPath (Join-Path $definition.Directory.FullName $subfolder)) {
+                Add-Warning "skill '$id': '$subfolder/' is not copied to codex output, and VS Code Copilot resolves the codex copy from .agents/skills, so Copilot loses it too."
+            }
+        }
+    }
+
+    if ($errors.Count -gt 0) {
+        throw ("Cross-harness policy violations:`r`n  - " + ($errors -join "`r`n  - "))
+    }
 }
 
 function Get-UnresolvedPlaceholderTokens {
@@ -3978,6 +4177,18 @@ function ConvertTo-SkillDocument {
         }
     }
 
+    if ($Client -ne 'codex') {
+        # Claude Code extensions. Emitted for the Copilot copy too so the renders stay byte-identical
+        # where Copilot co-scans both trees; Codex expresses modelInvocable in agents/openai.yaml instead.
+        $skillMeta = Get-Prop $Meta 'skills'
+        if (-not (ConvertTo-BoolValue (Get-Prop $skillMeta 'modelInvocable') $true)) {
+            $frontmatter.Add('disable-model-invocation: true')
+        }
+        if (-not (ConvertTo-BoolValue (Get-Prop $skillMeta 'userInvocable') $true)) {
+            $frontmatter.Add('user-invocable: false')
+        }
+    }
+
     # $metadata = Get-Prop $Meta 'metadata'
     # if ($null -ne $metadata -and @($metadata.PSObject.Properties).Count -gt 0) {
     #     $frontmatter.Add('metadata:')
@@ -4226,7 +4437,15 @@ function Install-RenderedSkill {
 
     $excludedItemNames = @($excludedItemNames | Select-Object -Unique)
 
-    foreach ($excludedItemName in ($excludedItemNames | Where-Object { $_ -notin @('SKILL.md', 'meta.json', 'meta.jsonc') })) {
+    # Codex has no frontmatter equivalent for disable-model-invocation; agents/openai.yaml is the only
+    # place to say it. The folder is otherwise excluded from codex output, so it is written last and
+    # kept out of the exclusion sweep below.
+    $codexPolicyFile = $null
+    if ($Target -eq 'codex' -and -not (ConvertTo-BoolValue (Get-Prop (Get-Prop $SkillDefinition.Meta 'skills') 'modelInvocable') $true)) {
+        $codexPolicyFile = Join-Path (Join-Path $targetDirectory 'agents') 'openai.yaml'
+    }
+
+    foreach ($excludedItemName in ($excludedItemNames | Where-Object { $_ -notin @('SKILL.md', 'meta.json', 'meta.jsonc') -and -not ($null -ne $codexPolicyFile -and $_ -eq 'agents') })) {
         $excludedPath = Join-Path $targetDirectory $excludedItemName
         if (Test-Path -LiteralPath $excludedPath) {
             if (-not (Remove-KatManagedPath -Path $excludedPath -RepositoryRoot $repoRoot)) {
@@ -4242,6 +4461,19 @@ function Install-RenderedSkill {
         $targetPath = Join-Path $targetDirectory $_.Name
         $copySucceeded = Install-ManagedSkillItem -SourceItem $_ -DestinationPath $targetPath
         $allSucceeded = $allSucceeded -and $copySucceeded
+    }
+
+    if ($null -ne $codexPolicyFile) {
+        if (New-ManagedDirectory -Path (Split-Path -Parent $codexPolicyFile) -RequireManagedContent $false) {
+            $policyContent = @(
+                'policy:',
+                '  allow_implicit_invocation: false'
+            ) -join "`r`n"
+            $allSucceeded = (Write-ManagedFile -Path $codexPolicyFile -Content $policyContent -ValidationLabel "Skill '$id' codex policy") -and $allSucceeded
+        }
+        else {
+            $allSucceeded = $false
+        }
     }
 
     return $allSucceeded

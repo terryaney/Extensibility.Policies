@@ -8,12 +8,12 @@ Nexgen is a single site built on top of the reusable KatApp framework using spec
 
 Nexgen owns site-specific server-side data production and CalcEngine integration. It explains where data comes from, how BRD rows merge, how CalcEngine result tabs are produced, how API DataSource mappings work, how xDS data is shaped, how commands are processed, and how cache refresh is triggered.
 
-If the task is purely about KAML rendering, `v-ka-*`, petite-vue behavior, `application.*`, modal display, or consuming already-available RBLe data in a view, give a short triage response instead of answering from Nexgen server-side assumptions. State that the task is KatApp-owned, name the reason, and ask the user to rerun with `/kat-katapp` unless explicit KatApp guidance is already available in the conversation.
+If the task is purely about KAML rendering, `v-ka-*`, petite-vue behavior, `application.*`, modal display, or consuming already-available RBLe data in a view, give a short triage response instead of answering from Nexgen server-side assumptions. State that the task is KatApp-owned, name the reason, and ask the user to rerun with the `kat-katapp` skill unless explicit KatApp guidance is already available in the conversation.
 
 Example triage response:
 
 ```md
-This is KatApp-owned because it concerns `v-ka-modal` rendering and view-side RBLe consumption. Use `/kat-katapp` for the detailed answer.
+This is KatApp-owned because it concerns `v-ka-modal` rendering and view-side RBLe consumption. Use the `kat-katapp` skill for the detailed answer.
 ```
 
 ## Retrieval Order
