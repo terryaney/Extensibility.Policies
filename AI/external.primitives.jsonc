@@ -1,8 +1,121 @@
+// External primitives: upstream owns the body, `npx skills` fetches it, KAT owns deployment policy.
+//
+// Each key is the KAT id the skill is deployed under. `skill` is what upstream calls it — also the
+// directory the CLI creates before KAT renames it to the key. KAT compiles the `npx skills add`
+// invocation itself so `--copy` and the per-agent flags are guaranteed rather than hand-maintained.
+//
+// Fields:
+//   source          repository URL passed to `npx skills add`
+//   skill           upstream skill name (defaults to the key)
+//   clients         any of claude | copilot | codex
+//   scope           global (the only supported scope today)
+//   enabled         false uninstalls from every listed client
+//   applyForUsers   restricts the entry to those usernames
+//
+// Everything else is post-install frontmatter decoration, using the same vocabulary as a vendored
+// skill's meta.jsonc: name, description, argument-hint, license, compatibility, context, and
+// skills.modelInvocable / skills.userInvocable. Decoration re-applies after every install, because
+// every sync re-pulls upstream HEAD and overwrites SKILL.md.
 {
-  "skill-creator": {
-	"client": "claude",
-	"command": "npx --yes skills add https://github.com/anthropics/skills --skill skill-creator --agent claude-code --global --yes --copy",
-	"enabled": true,
-	"applyForUsers": [ "terry.aney", "20813678" ]
-  }
+	// Upstream owns body and description outright; KAT contributes only the prefix and context.
+	"kat-frontend-design": {
+		"source": "https://github.com/anthropics/skills",
+		"skill": "frontend-design",
+		"clients": [ "claude", "copilot", "codex" ],
+		"scope": "global",
+		"enabled": true,
+		"context": "fork"
+	},
+
+	// Disabled, kept for documentation. Pocock deleted skills/productivity/caveman upstream, so the
+	// vendored copy was a fork of a dead skill. JuliusBrussee/caveman is a live alternative — a much
+	// larger suite (caveman plus 13 caveman-* siblings), unevaluated. Enable to try it.
+	"kat-caveman": {
+		"source": "https://github.com/JuliusBrussee/caveman",
+		"skill": "caveman",
+		"clients": [ "claude", "copilot", "codex" ],
+		"scope": "global",
+		"enabled": false
+	},
+
+	// Upstream's body tells the user to run /setup-matt-pocock-skills when docs/agents/issue-tracker.md
+	// is missing. That skill scaffolds docs/agents/*.md and appends an "## Agent skills" block to
+	// CLAUDE.md/AGENTS.md, which we do not want. The amendment overrides that instruction instead of
+	// forking the body, which is what the vendored copy used to do.
+	"kat-code-review": {
+		"source": "https://github.com/mattpocock/skills",
+		"skill": "code-review",
+		"clients": [ "claude", "copilot", "codex" ],
+		"scope": "global",
+		"enabled": true,
+		"context": "fork",
+		"amendments": {
+			"all": [
+				"kat-code-review: never suggest running a setup skill, and never install or scaffold skills as part of a review. Upstream's body references a setup step that this deployment deliberately omits.",
+				"kat-code-review: do not create or edit `docs/agents/issue-tracker.md`, and do not add an \"## Agent skills\" block to `CLAUDE.md` or `AGENTS.md`. A review must leave the repository unchanged.",
+				"kat-code-review: when the spec source is an issue referenced in a commit message, ask the user how to fetch it rather than assuming a configured issue tracker."
+			]
+		}
+	},
+
+	"kat-grill-me": {
+		"source": "https://github.com/mattpocock/skills",
+		"skill": "grilling",
+		"clients": [ "claude", "copilot", "codex" ],
+		"scope": "global",
+		"enabled": true,
+		"description": "Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases.",
+		"context": "fork"
+	},
+
+	// Upstream ships disable-model-invocation and agents/openai.yaml already; KAT restates the intent
+	// so it survives an upstream change rather than depending on it.
+	"kat-handoff": {
+		"source": "https://github.com/mattpocock/skills",
+		"skill": "handoff",
+		"clients": [ "claude", "copilot", "codex" ],
+		"scope": "global",
+		"enabled": true,
+		"description": "Compact the current conversation into a handoff document for another agent to pick up.",
+		"argument-hint": "\"What will the next session be used for?\"",
+		"context": "fork",
+		"skills": {
+			"modelInvocable": false
+		}
+	},
+
+	// Also evaluates existing skills, not just new ones — it snapshots the current version as an A/B
+	// baseline and grades against it. That is what the vendored primitive-evaluator forked; its
+	// primitive-analyzer / -comparator / -grader agents were this skill's analyzer / comparator /
+	// grader renamed. Widened past Claude so skill evaluation is available where it was actually used.
+	"kat-skill-creator": {
+		"source": "https://github.com/anthropics/skills",
+		"skill": "skill-creator",
+		"clients": [ "claude", "copilot", "codex" ],
+		"scope": "global",
+		"enabled": true
+	},
+
+	// Upstream ships no native Copilot or Codex skill — its configs/ folder tells those harnesses to
+	// use the skill as pasted instruction text instead. These amendments are that guidance, rewritten
+	// to point at the installed skill folder. Claude needs none: it reads commands/ natively.
+	"kat-visual-explainer": {
+		"source": "https://github.com/nicobailon/visual-explainer",
+		"skill": "visual-explainer",
+		"clients": [ "claude", "copilot", "codex" ],
+		"scope": "global",
+		"enabled": true,
+		"context": "fork",
+		"amendments": {
+			"all": [
+				"kat-visual-explainer: write generated HTML to `~/.agent/diagrams/` unless the user asks for another path. Open it in a browser only when the environment permits; if browser access is blocked, report the file path instead."
+			],
+			"copilot": [
+				"kat-visual-explainer: the files in this skill's `commands/` folder are not registered as separate skills here. When the user asks for a diagram, architecture overview, diff review, plan review, project recap, slide deck, or complex comparison table, read the skill's `SKILL.md` and follow its workflow, using the matching file in its `commands/` folder as the template."
+			],
+			"codex": [
+				"kat-visual-explainer: command templates from this skill's `commands/` folder may not be registered as prompts. When one is unavailable, read the relevant command file directly and follow the skill workflow manually."
+			]
+		}
+	}
 }

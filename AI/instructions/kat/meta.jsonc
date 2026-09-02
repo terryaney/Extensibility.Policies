@@ -2,8 +2,12 @@
 	"id": "kat",
 	"name": "KAT Shared Instruction",
 	"description": "Shared KAT communication, code, and .NET guidance rendered for Copilot and Claude.",
+	// codex is on because the Skill Amendments section is appended to this instruction, and amendments
+	// are the only safe channel for codex-only guidance (bodyReplacements.codex is banned by D2).
+	// Enabling it here also puts the rest of the KAT rules into ~/.codex/AGENTS.md, which is intended.
 	"enabled": {
 		"copilot": true,
-		"claude": true
+		"claude": true,
+		"codex": true
 	}
 }

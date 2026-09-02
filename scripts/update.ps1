@@ -36,6 +36,48 @@ $script:katRegionPattern = '(?is)[ \t]*<!--\s*kat:start\s*-->.*?<!--\s*kat:end\s
 $script:codexGlobalRoot = Join-Path $env:USERPROFILE '.codex'
 $script:codexGlobalSkillRoot = Join-Path $env:USERPROFILE '.agents'
 
+# External primitives are installed by `npx skills`, so KAT must mirror where that CLI actually
+# writes. Verified against skills@1.5.23 by reading getAgentBaseDir() and by running the install:
+# any agent whose skillsDir is '.agents/skills' is a "universal" agent, and for those the CLI ignores
+# its own globalSkillsDir entry and writes the shared ~/.agents/skills instead. github-copilot and
+# codex are both universal, so one npx install produces one directory serving both. Only claude-code
+# is non-universal and gets a root of its own.
+#
+# That universal root is not the whole story for Copilot: per the read matrix in Primitives.md,
+# ~/.agents/skills is read by VS Code Copilot and Codex, but Copilot CLI resolves ~/.copilot/skills —
+# the same root KAT publishes vendored copilot skills to. So the copilot client's real destination is
+# ~/.copilot/skills, which KAT mirrors from the universal copy after decorating it, and the universal
+# copy is dropped afterwards unless codex actually wanted it.
+$script:universalGlobalSkillRoot = Join-Path (Join-Path $env:USERPROFILE '.agents') 'skills'
+$script:externalPrimitiveClients = [ordered]@{
+    claude = [pscustomobject]@{
+        Agent = 'claude-code'
+        GlobalRoot = Join-Path $(if ([string]::IsNullOrWhiteSpace($env:CLAUDE_CONFIG_DIR)) { Join-Path $env:USERPROFILE '.claude' } else { $env:CLAUDE_CONFIG_DIR.Trim() }) 'skills'
+        Universal = $false
+    }
+    copilot = [pscustomobject]@{
+        Agent = 'github-copilot'
+        GlobalRoot = Join-Path (Join-Path $env:USERPROFILE '.copilot') 'skills'
+        Universal = $true
+    }
+    codex = [pscustomobject]@{
+        Agent = 'codex'
+        GlobalRoot = $script:universalGlobalSkillRoot
+        Universal = $true
+    }
+}
+
+# Provenance marker for external installs. Deliberately NOT the CreatedBy=KAT alternate data stream:
+# that stream means "KAT rendered this file and may delete it", and Clear-ManagedRoot would reap the
+# install before Install-ExternalPrimitives ever ran. A sidecar also makes the directory un-reusable
+# by Test-ReusableManagedDirectory, which is exactly the protection an npx-owned tree needs.
+$script:externalPrimitiveSidecarName = '.kat-external.json'
+
+# Skill amendments are appended to this instruction rather than published as one of their own, so the
+# shared rules stay in a single file per harness. That instruction's client enablement therefore gates
+# amendment delivery — it must reach every client any amendment targets.
+$script:amendmentHostInstructionId = 'kat'
+
 function Add-Warning {
     param([string]$Message)
 
@@ -975,15 +1017,8 @@ function Get-CodexGlobalSkillPath {
 function Publish-Skills {
     param(
         [object]$Roots,
-        [object[]]$Definitions,
-        [object[]]$ExternalPrimitiveDefinitions = @()
+        [object[]]$Definitions
     )
-
-    # %USERPROFILE%\.agents\skills is shared with copilot-client external primitives, whose uninstall
-    # is a recursive delete of the whole id folder. Never let both writers own the same id.
-    $copilotPrimitiveIds = @($ExternalPrimitiveDefinitions |
-        Where-Object { [string]$_.Client -ieq 'copilot' } |
-        ForEach-Object { [string]$_.Id })
 
     foreach ($definition in $Definitions) {
         $enabled = $definition.Enabled
@@ -1117,13 +1152,8 @@ function Publish-Skills {
 
         $codexEnabled = ConvertTo-BoolValue (Get-Prop $enabled 'codex') $false
         $codexIsGlobal = $skillRepositories.Count -eq 0
-        $codexCollides = $codexEnabled -and $codexIsGlobal -and ($copilotPrimitiveIds -icontains $id)
 
-        if ($codexCollides) {
-            Add-Warning "${id}: a copilot external primitive of the same id installs to $(Get-CodexGlobalSkillPath -Id $id); codex publishing was skipped because uninstalling that primitive would delete the folder outright."
-            Add-DeploymentRecord -Category 'skill' -Id $id -Target 'codex' -Status 'skipped' -Path (Get-CodexGlobalSkillPath -Id $id) -Detail 'global skill id collides with a copilot external primitive; codex skipped'
-        }
-        elseif ($codexEnabled) {
+        if ($codexEnabled) {
             $codexDefinition = New-CodexSkillDefinition -SkillDefinition $definition
             $publishTargets = New-Object System.Collections.Generic.List[string]
             $codexSucceeded = $true
@@ -1158,7 +1188,7 @@ function Publish-Skills {
 
         # Targeted cleanup: %USERPROFILE%\.agents\skills can never be a managed root, so only ids that
         # codex stopped publishing globally are removed — and only when KAT owns every file in them.
-        if (-not ($codexEnabled -and $codexIsGlobal) -and -not $codexCollides) {
+        if (-not ($codexEnabled -and $codexIsGlobal)) {
             $codexGlobalPath = Get-CodexGlobalSkillPath -Id $id
             if (Test-Path -LiteralPath $codexGlobalPath) {
                 if (Remove-KatManagedPath -Path $codexGlobalPath -RepositoryRoot $repoRoot) {
@@ -1208,21 +1238,67 @@ function Get-ExternalPrimitiveDefinitions {
             continue
         }
 
+        # `clients` is the current shape; `client` stays readable as a single-target shorthand.
+        $clients = ConvertTo-StringArray (Get-Prop $meta 'clients')
+        if ($clients.Count -eq 0) {
+            $singleClient = [string](Get-Prop $meta 'client')
+            if (-not [string]::IsNullOrWhiteSpace($singleClient)) {
+                $clients = @($singleClient)
+            }
+        }
+
+        $clients = @($clients |
+            ForEach-Object { [string]$_ } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            ForEach-Object { $_.Trim().ToLowerInvariant() } |
+            Select-Object -Unique)
+
+        # The manifest key is the KAT id we deploy under; `skill` is what upstream calls it, which is
+        # also the directory `npx skills add` creates before the post-install rename.
+        $upstreamSkill = [string](Get-Prop $meta 'skill')
+        if ([string]::IsNullOrWhiteSpace($upstreamSkill)) {
+            $upstreamSkill = $property.Name
+        }
+
+        $scope = [string](Get-Prop $meta 'scope')
+        if ([string]::IsNullOrWhiteSpace($scope)) {
+            $scope = 'global'
+        }
+
         $definitions.Add([pscustomobject]@{
             Id = $property.Name
             Meta = $meta
             Enabled = ConvertTo-BoolValue (Get-Prop $meta 'enabled') $true
-            Client = [string](Get-Prop $meta 'client')
-            Command = [string](Get-Prop $meta 'command')
+            Clients = @($clients)
+            Source = [string](Get-Prop $meta 'source')
+            Skill = $upstreamSkill.Trim()
+            Scope = $scope.Trim().ToLowerInvariant()
+            LegacyCommand = [string](Get-Prop $meta 'command')
+            Amendments = Get-Prop $meta 'amendments'
         })
     }
 
     return @($definitions.ToArray())
 }
 
+function Get-ExternalPrimitiveClient {
+    param([string]$Client)
+
+    if ([string]::IsNullOrWhiteSpace($Client)) {
+        return $null
+    }
+
+    $key = $Client.Trim().ToLowerInvariant()
+    if (-not $script:externalPrimitiveClients.Contains($key)) {
+        return $null
+    }
+
+    return $script:externalPrimitiveClients[$key]
+}
+
 function Test-ExternalPrimitiveClientInstalled {
     param(
-        [ValidateSet('copilot', 'claude')]
+        [ValidateSet('copilot', 'claude', 'codex')]
         [string]$Client
     )
 
@@ -1237,29 +1313,74 @@ function Test-ExternalPrimitiveClientInstalled {
         'claude' {
             return $script:clientInstalled.claude
         }
+        'codex' {
+            return $script:clientInstalled.codex
+        }
     }
 
     return $false
 }
 
-function Get-ExternalPrimitiveInstallPath {
+function Get-ExternalPrimitiveInstallRoot {
     param(
-        [ValidateSet('copilot', 'claude')]
-        [string]$Client,
-        [string]$Id,
-        [object]$Roots
+        [ValidateSet('copilot', 'claude', 'codex')]
+        [string]$Client
     )
 
-    switch ($Client) {
-        'copilot' {
-            return Join-Path (Join-Path (Join-Path $env:USERPROFILE '.agents') 'skills') $Id
-        }
-        'claude' {
-            return Join-Path (Join-Path $Roots.ClaudeRoot 'skills') $Id
-        }
+    $clientInfo = Get-ExternalPrimitiveClient -Client $Client
+    if ($null -eq $clientInfo) {
+        return $null
     }
 
-    return $null
+    return $clientInfo.GlobalRoot
+}
+
+function Get-ExternalPrimitiveInstallPath {
+    param(
+        [ValidateSet('copilot', 'claude', 'codex')]
+        [string]$Client,
+        [string]$Id
+    )
+
+    $root = Get-ExternalPrimitiveInstallRoot -Client $Client
+    if ([string]::IsNullOrWhiteSpace($root)) {
+        return $null
+    }
+
+    return Join-Path $root $Id
+}
+
+function New-ExternalPrimitiveCommand {
+    param(
+        [string]$Source,
+        [string]$Skill,
+        [string[]]$Clients
+    )
+
+    # `--copy` is mandatory, not incidental: the CLI otherwise symlinks each agent directory back to
+    # one shared cache, so decoration would write into every other consumer's copy — and a symlinked
+    # directory reads as a reparse point, which Test-LegacyManagedItem treats as KAT-managed and reaps.
+    $arguments = New-Object System.Collections.Generic.List[string]
+    $arguments.Add('--yes')
+    $arguments.Add('skills')
+    $arguments.Add('add')
+    $arguments.Add($Source)
+    $arguments.Add('--skill')
+    $arguments.Add($Skill)
+
+    # The CLI rejects a comma-joined agent list; repeated -a is the only multi-target form it accepts.
+    foreach ($client in $Clients) {
+        $clientInfo = Get-ExternalPrimitiveClient -Client $client
+        if ($null -eq $clientInfo) { continue }
+        $arguments.Add('--agent')
+        $arguments.Add($clientInfo.Agent)
+    }
+
+    $arguments.Add('--global')
+    $arguments.Add('--yes')
+    $arguments.Add('--copy')
+
+    return 'npx ' + ($arguments.ToArray() -join ' ')
 }
 
 function Remove-ExternalPrimitiveInstall {
@@ -1280,6 +1401,379 @@ function Remove-ExternalPrimitiveInstall {
     catch {
         Add-BlockedPath $Path
         return $false
+    }
+}
+
+function Set-MarkdownFrontmatterScalars {
+    param(
+        [string]$Path,
+        [System.Collections.IDictionary]$Values
+    )
+
+    # Deliberately line-surgical rather than a parse/re-emit round trip: Split-MarkdownFrontmatter
+    # keeps only top-level scalars, so rebuilding from it would silently drop upstream's nested
+    # blocks (metadata:, lists). We touch only the keys we own and leave every other byte alone.
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return $false
+    }
+
+    $content = Get-Content -LiteralPath $Path -Raw
+    $match = [regex]::Match($content, '\A---\r?\n(?<fm>[\s\S]*?)\r?\n---(?<rest>\r?\n[\s\S]*)\z')
+    if (-not $match.Success) {
+        return $false
+    }
+
+    $newline = if ($content -match "`r`n") { "`r`n" } else { "`n" }
+    $lines = [System.Collections.Generic.List[string]]::new()
+    foreach ($line in ($match.Groups['fm'].Value -split "`r?`n")) {
+        $lines.Add($line)
+    }
+
+    foreach ($key in @($Values.Keys)) {
+        $value = $Values[$key]
+        $index = -1
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match ("^" + [regex]::Escape($key) + "\s*:")) {
+                $index = $i
+                break
+            }
+        }
+
+        if ($index -ge 0) {
+            # A key whose value is a nested block spans lines we cannot safely rewrite one at a time.
+            $inlineValue = ($lines[$index] -replace ("^" + [regex]::Escape($key) + "\s*:\s*"), '')
+            $nextIsIndented = ($index + 1 -lt $lines.Count) -and ($lines[$index + 1] -match '^\s+\S')
+            if ([string]::IsNullOrWhiteSpace($inlineValue) -and $nextIsIndented) {
+                Add-Warning "external primitive: '$key' is a nested block in $Path; decoration skipped for that key."
+                continue
+            }
+        }
+
+        if ($null -eq $value) {
+            if ($index -ge 0) {
+                $lines.RemoveAt($index)
+            }
+            continue
+        }
+
+        $rendered = $key + ': ' + (Format-YamlScalar $value)
+        if ($index -ge 0) {
+            $lines[$index] = $rendered
+        }
+        else {
+            $lines.Add($rendered)
+        }
+    }
+
+    $rebuilt = '---' + $newline + (($lines.ToArray()) -join $newline) + $newline + '---' + $match.Groups['rest'].Value
+    if ($rebuilt -ceq $content) {
+        return $true
+    }
+
+    Set-Content -LiteralPath $Path -Value $rebuilt -NoNewline -Encoding utf8
+    return $true
+}
+
+function Get-ExternalPrimitiveDecorations {
+    param(
+        [object]$Meta,
+        [string]$Id,
+        [ValidateSet('copilot', 'claude', 'codex')]
+        [string]$Client
+    )
+
+    $values = [ordered]@{}
+
+    # The rename gives the directory the KAT id; frontmatter `name` has to follow or the harnesses
+    # advertise a name that no longer matches the folder the user finds it in.
+    $name = [string](Get-Prop $Meta 'name')
+    if ([string]::IsNullOrWhiteSpace($name)) { $name = $Id }
+    $values['name'] = $name
+
+    foreach ($field in @('description', 'argument-hint')) {
+        $value = [string](Get-Prop $Meta $field)
+        if (-not [string]::IsNullOrWhiteSpace($value)) {
+            $values[$field] = $value
+        }
+    }
+
+    # Codex reads name + description only, and expresses invocation intent in agents/openai.yaml.
+    if ($Client -eq 'codex') {
+        $values.Remove('argument-hint')
+        return $values
+    }
+
+    foreach ($field in @('license', 'compatibility', 'context')) {
+        $value = [string](Get-Prop $Meta $field)
+        if (-not [string]::IsNullOrWhiteSpace($value)) {
+            $values[$field] = $value
+        }
+    }
+
+    # Same vocabulary ConvertTo-SkillDocument renders for vendored skills, so a skill reads the same
+    # whether it is vendored or external. $null means "delete the key upstream shipped".
+    $skillMeta = Get-Prop $Meta 'skills'
+    foreach ($pair in @(
+        @{ Prop = 'modelInvocable'; Key = 'disable-model-invocation'; Present = $true },
+        @{ Prop = 'userInvocable'; Key = 'user-invocable'; Present = $false })) {
+        $configured = Get-Prop $skillMeta $pair.Prop
+        if ($null -eq $configured) { continue }
+        $values[$pair.Key] = if (ConvertTo-BoolValue $configured $true) { $null } else { $pair.Present }
+    }
+
+    return $values
+}
+
+function Set-ExternalPrimitiveOpenAiInvocation {
+    param(
+        [string]$InstallPath,
+        [object]$Meta
+    )
+
+    # Codex has no frontmatter equivalent for implicit invocation; agents/openai.yaml is the only place
+    # it can be expressed. Upstream often ships the file already, so patch rather than author one.
+    $skillMeta = Get-Prop $Meta 'skills'
+    $configured = Get-Prop $skillMeta 'modelInvocable'
+    if ($null -eq $configured) {
+        return
+    }
+
+    $yamlPath = Join-Path (Join-Path $InstallPath 'agents') 'openai.yaml'
+    if (-not (Test-Path -LiteralPath $yamlPath -PathType Leaf)) {
+        return
+    }
+
+    $desired = if (ConvertTo-BoolValue $configured $true) { 'true' } else { 'false' }
+    $content = Get-Content -LiteralPath $yamlPath -Raw
+    $newline = if ($content -match "`r`n") { "`r`n" } else { "`n" }
+
+    if ($content -match '(?m)^allow_implicit_invocation\s*:') {
+        $updated = [regex]::Replace($content, '(?m)^allow_implicit_invocation\s*:.*$', "allow_implicit_invocation: $desired")
+    }
+    else {
+        $updated = $content.TrimEnd() + $newline + "allow_implicit_invocation: $desired" + $newline
+    }
+
+    if ($updated -cne $content) {
+        Set-Content -LiteralPath $yamlPath -Value $updated -NoNewline -Encoding utf8
+    }
+}
+
+function Write-ExternalPrimitiveSidecar {
+    param(
+        [string]$InstallPath,
+        [object]$Definition,
+        [string[]]$Clients
+    )
+
+    # `npx skills` records no provenance in the installed directory — `skills list` reads its source
+    # labels from the lockfile, not the tree — so KAT stamps its own, and the file doubles as the
+    # marker that keeps Test-ReusableManagedDirectory from ever treating the tree as disposable.
+    $sidecar = [ordered]@{
+        managedBy = 'KAT'
+        id = $Definition.Id
+        source = $Definition.Source
+        upstreamSkill = $Definition.Skill
+        clients = @($Clients)
+        scope = $Definition.Scope
+        installedUtc = (Get-Date).ToUniversalTime().ToString('o')
+    }
+
+    try {
+        $json = $sidecar | ConvertTo-Json -Depth 4
+        Set-Content -LiteralPath (Join-Path $InstallPath $script:externalPrimitiveSidecarName) -Value $json -Encoding utf8
+    }
+    catch {
+        # Provenance is best-effort; a failure here must not fail the install.
+    }
+}
+
+function Get-AmendmentSources {
+    param(
+        [object[]]$ExternalPrimitiveDefinitions,
+        [object[]]$SkillDefinitions
+    )
+
+    # Externals and vendored skills declare amendments the same way; they only differ in how each one
+    # says which clients it reaches. Normalise both to {Id, Amendments, Clients} so the renderer below
+    # does not care which kind it is looking at.
+    $sources = New-Object System.Collections.Generic.List[object]
+
+    foreach ($definition in @($ExternalPrimitiveDefinitions)) {
+        if ($null -eq $definition -or -not $definition.Enabled) { continue }
+        if ($null -eq $definition.Amendments) { continue }
+
+        $sources.Add([pscustomobject]@{
+            Id = $definition.Id
+            Amendments = $definition.Amendments
+            Clients = @($definition.Clients)
+        })
+    }
+
+    foreach ($definition in @($SkillDefinitions)) {
+        if ($null -eq $definition) { continue }
+
+        $amendments = Get-Prop $definition.Meta 'amendments'
+        if ($null -eq $amendments) { continue }
+
+        $enabled = $definition.Enabled
+        $clients = New-Object System.Collections.Generic.List[string]
+        if ((Test-CopilotSubClientEnabled -Enabled $enabled -SubClient 'vscode') -or (Test-CopilotSubClientEnabled -Enabled $enabled -SubClient 'cli')) {
+            $clients.Add('copilot')
+        }
+        if (ConvertTo-BoolValue (Get-Prop $enabled 'claude') $true) { $clients.Add('claude') }
+        if (Test-CodexEnabled -Enabled $enabled) { $clients.Add('codex') }
+
+        $sources.Add([pscustomobject]@{
+            Id = [string](Get-Prop $definition 'Id')
+            Amendments = $amendments
+            Clients = @($clients.ToArray())
+        })
+    }
+
+    return $sources.ToArray()
+}
+
+function New-SkillAmendmentSection {
+    param([object[]]$Definitions)
+
+    # An external skill's body is upstream's, so the only way to correct its behaviour is from the
+    # outside. Instructions are that lever: they concatenate rather than replace, so a line here
+    # overrides what the skill says without KAT ever owning the skill's prose. Amendments live next
+    # to the entry they amend — in external.primitives.jsonc or a vendored skill's meta.jsonc — so
+    # the override is findable from the thing it overrides.
+    #
+    # Vendored skills can amend too, and the reason is codex: bodyReplacements.codex is banned (D2)
+    # because codex skill output is co-read by Copilot, so a body has no way to address codex alone.
+    # A *global* codex instruction lands in ~/.codex/AGENTS.md, which Copilot does not read, making an
+    # amendment the only safe channel for codex-only guidance.
+    $sections = New-Object System.Collections.Generic.List[string]
+    $clientsWithAmendments = New-Object System.Collections.Generic.HashSet[string] ([System.StringComparer]::OrdinalIgnoreCase)
+
+    foreach ($definition in @($Definitions | Sort-Object { $_.Id })) {
+        if ($null -eq $definition) { continue }
+
+        $amendments = $definition.Amendments
+        if ($null -eq $amendments) { continue }
+
+        $deployedClients = @($definition.Clients)
+        $lines = New-Object System.Collections.Generic.List[string]
+
+        # 'all' first, then per-client. A per-client key is only honoured where the skill actually
+        # deploys — an amendment for a client that never receives the skill is dead text.
+        foreach ($rule in (ConvertTo-StringArray (Get-Prop $amendments 'all'))) {
+            $lines.Add("- $rule")
+        }
+
+        foreach ($client in @('claude', 'copilot', 'codex')) {
+            $clientRules = ConvertTo-StringArray (Get-Prop $amendments $client)
+            if ($clientRules.Count -eq 0) { continue }
+
+            if ($deployedClients -notcontains $client) {
+                Add-Warning "external primitive '$($definition.Id)': amendments.$client is set but the entry does not deploy to $client; those lines were dropped."
+                continue
+            }
+
+            [void]$clientsWithAmendments.Add($client)
+            $lines.Add("<!-- ${client}:start -->")
+            foreach ($rule in $clientRules) {
+                $lines.Add("- $rule")
+            }
+            $lines.Add("<!-- ${client}:end -->")
+        }
+
+        if ($lines.Count -eq 0) { continue }
+
+        $sections.Add("### $($definition.Id)")
+        $sections.Add('')
+        foreach ($line in $lines) { $sections.Add($line) }
+        $sections.Add('')
+    }
+
+    if ($sections.Count -eq 0) {
+        return $null
+    }
+
+    $body = @(
+        '## Skill Amendments'
+        ''
+        'These skills are installed from upstream repositories, or are shipped to harnesses whose'
+        'behaviour their body cannot address. The rules below override what those skills say. Where'
+        'they conflict, these win.'
+        ''
+    ) + $sections.ToArray()
+
+    return (($body -join "`r`n").TrimEnd())
+}
+
+function Add-SkillAmendmentSection {
+    param(
+        [object[]]$InstructionDefinitions,
+        [object[]]$AmendmentSources
+    )
+
+    $section = New-SkillAmendmentSection -Definitions $AmendmentSources
+    if ($null -eq $section) {
+        return
+    }
+
+    # Amendments ride the kat instruction rather than an artifact of their own, so there is one place
+    # to read the shared rules and one @import to keep track of. That makes the kat instruction's own
+    # client enablement the gate: an amendment for a client kat does not reach is never delivered.
+    $target = @($InstructionDefinitions | Where-Object { [string](Get-Prop $_ 'Id') -eq $script:amendmentHostInstructionId })
+    if ($target.Count -eq 0) {
+        Add-Warning "skill amendments were declared but instruction '$($script:amendmentHostInstructionId)' does not exist, so they were not published."
+        return
+    }
+
+    $hostEnabled = $target[0].Enabled
+    foreach ($client in @('claude', 'copilot', 'codex')) {
+        $reaches = switch ($client) {
+            'claude' { ConvertTo-BoolValue (Get-Prop $hostEnabled 'claude') $true }
+            'copilot' { (Test-CopilotSubClientEnabled -Enabled $hostEnabled -SubClient 'vscode') -or (Test-CopilotSubClientEnabled -Enabled $hostEnabled -SubClient 'cli') }
+            'codex' { Test-CodexEnabled -Enabled $hostEnabled }
+        }
+
+        if (-not $reaches -and $section -match ('(?i)<!--\s*' + [regex]::Escape($client) + ':start\s*-->')) {
+            Add-Warning "skill amendments target $client, but instruction '$($script:amendmentHostInstructionId)' is not enabled for $client, so those lines are never delivered."
+        }
+    }
+
+    $target[0].Body = ($target[0].Body.TrimEnd() + "`r`n`r`n" + $section + "`r`n")
+}
+
+function Remove-OrphanedExternalPrimitives {
+    param([object[]]$Definitions)
+
+    # Renaming a manifest entry strands its previous install: the rename step consumes the directory
+    # npx wrote, but the Copilot mirror is KAT's own copy under the *old* id and nothing reclaims it.
+    # The same happens when an entry is deleted outright, or when a user drops out of applyForUsers.
+    # Sidecar provenance is what makes this safe to sweep — only directories KAT stamped are touched.
+    $knownIds = New-Object System.Collections.Generic.HashSet[string] ([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($definition in @($Definitions)) {
+        if ($null -eq $definition) { continue }
+        [void]$knownIds.Add([string](Get-Prop $definition 'Id'))
+    }
+
+    $roots = @($script:universalGlobalSkillRoot) + @($script:externalPrimitiveClients.Keys | ForEach-Object { $script:externalPrimitiveClients[$_].GlobalRoot })
+    foreach ($root in ($roots | Select-Object -Unique)) {
+        if (-not (Test-Path -LiteralPath $root -PathType Container)) { continue }
+
+        foreach ($directory in @(Get-ChildItem -LiteralPath $root -Directory -Force -ErrorAction SilentlyContinue)) {
+            $sidecarPath = Join-Path $directory.FullName $script:externalPrimitiveSidecarName
+            if (-not (Test-Path -LiteralPath $sidecarPath -PathType Leaf)) { continue }
+
+            $sidecar = $null
+            try { $sidecar = Get-Content -LiteralPath $sidecarPath -Raw | ConvertFrom-Json } catch { continue }
+            if ([string](Get-Prop $sidecar 'managedBy') -ne 'KAT') { continue }
+
+            $sidecarId = [string](Get-Prop $sidecar 'id')
+            if ([string]::IsNullOrWhiteSpace($sidecarId) -or $knownIds.Contains($sidecarId)) { continue }
+
+            if (Remove-ExternalPrimitiveInstall -Path $directory.FullName) {
+                Add-DeploymentRecord -Category 'skill' -Id $sidecarId -Target 'claude' -Status 'removed' -Path $directory.FullName -Detail 'external primitive no longer in the manifest.'
+            }
+        }
     }
 }
 
@@ -1467,80 +1961,224 @@ function Ensure-RipgrepTool {
 }
 
 function Install-ExternalPrimitives {
-    param(
-        [object]$Roots,
-        [object[]]$Definitions
-    )
+    param([object[]]$Definitions)
+
+    Remove-OrphanedExternalPrimitives -Definitions $Definitions
+
+    $allClients = @($script:externalPrimitiveClients.Keys)
 
     foreach ($definition in $Definitions) {
         $id = $definition.Id
         $enabled = [bool]$definition.Enabled
-        $client = [string]$definition.Client
-        $command = [string]$definition.Command
-        $normalizedClient = if ([string]::IsNullOrWhiteSpace($client)) { '' } else { $client.Trim().ToLowerInvariant() }
+        $requestedClients = @($definition.Clients)
+        $validClients = @($requestedClients | Where-Object { $allClients -contains $_ })
+        $invalidClients = @($requestedClients | Where-Object { $allClients -notcontains $_ })
 
-        foreach ($targetClient in @('copilot', 'claude')) {
-            if ($targetClient -ne $normalizedClient) {
+        foreach ($targetClient in $allClients) {
+            if ($validClients -notcontains $targetClient) {
                 Add-DeploymentRecord -Category 'skill' -Id $id -Target $targetClient -Status 'disabled' -MatrixValue 'excluded'
             }
         }
 
-        if ($normalizedClient -notin @('copilot', 'claude')) {
-            Add-DeploymentRecord -Category 'skill' -Id $id -Target 'claude' -Status 'blocked' -Detail "client '$client' is invalid."
+        if ($invalidClients.Count -gt 0) {
+            Add-DeploymentRecord -Category 'skill' -Id $id -Target 'claude' -Status 'blocked' -Detail "client '$($invalidClients -join ', ')' is invalid."
             continue
         }
 
-        if (-not (Test-ExternalPrimitiveClientInstalled -Client $normalizedClient)) {
-            Add-DeploymentRecord -Category 'skill' -Id $id -Target $normalizedClient -Status 'disabled' -MatrixValue 'excluded'
+        if ($validClients.Count -eq 0) {
+            Add-DeploymentRecord -Category 'skill' -Id $id -Target 'claude' -Status 'blocked' -Detail 'clients is required.'
             continue
         }
 
-        $installPath = Get-ExternalPrimitiveInstallPath -Client $normalizedClient -Id $id -Roots $Roots
-
+        # Uninstall runs against every client the entry names, whether or not that harness is present:
+        # a harness uninstalled after its skills were deployed must still get its tree cleaned up.
+        # Copilot and codex share one directory, so remove it once and report it against both.
         if (-not $enabled) {
-            $wasInstalled = Test-Path -LiteralPath $installPath
-            $removed = $false
-            if ($wasInstalled) {
-                $removed = Remove-ExternalPrimitiveInstall -Path $installPath
+            $removedRoots = @{}
+            foreach ($client in $validClients) {
+                $installPath = Get-ExternalPrimitiveInstallPath -Client $client -Id $id
+                if (-not $removedRoots.ContainsKey($installPath)) {
+                    $wasInstalled = Test-Path -LiteralPath $installPath
+                    $removed = if ($wasInstalled) { Remove-ExternalPrimitiveInstall -Path $installPath } else { $false }
+                    $removedRoots[$installPath] = [pscustomobject]@{ Was = $wasInstalled; Removed = $removed }
+                }
+
+                # npx always writes the universal root for a universal agent, so sweep it too even
+                # though an enabled sync would already have dropped it for a copilot-only entry.
+                if ((Get-ExternalPrimitiveClient -Client $client).Universal) {
+                    [void](Remove-ExternalPrimitiveInstall -Path (Join-Path $script:universalGlobalSkillRoot $id))
+                }
+
+                $state = $removedRoots[$installPath]
+                $stillInstalled = Test-Path -LiteralPath $installPath
+                Add-DeploymentRecord `
+                    -Category 'skill' `
+                    -Id $id `
+                    -Target $client `
+                    -Status $(if ($stillInstalled) { 'blocked' } elseif ($state.Was -and $state.Removed) { 'removed' } else { 'disabled' }) `
+                    -Path $(if ($state.Was) { $installPath } else { $null }) `
+                    -MatrixValue $(if ($state.Was) { $null } else { 'excluded' }) `
+                    -Detail $(if ($stillInstalled) { 'installed external primitive remains present.' } else { $null })
+            }
+            continue
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace([string]$definition.LegacyCommand)) {
+            foreach ($client in $validClients) {
+                Add-DeploymentRecord -Category 'skill' -Id $id -Target $client -Status 'blocked' -Detail "'command' is no longer supported; declare 'source' and 'skill' instead."
+            }
+            continue
+        }
+
+        if ($definition.Scope -ne 'global') {
+            foreach ($client in $validClients) {
+                Add-DeploymentRecord -Category 'skill' -Id $id -Target $client -Status 'blocked' -Detail "scope '$($definition.Scope)' is not supported; only 'global' is."
+            }
+            continue
+        }
+
+        if ([string]::IsNullOrWhiteSpace([string]$definition.Source)) {
+            foreach ($client in $validClients) {
+                Add-DeploymentRecord -Category 'skill' -Id $id -Target $client -Status 'blocked' -Detail 'source is required.'
+            }
+            continue
+        }
+
+        $installClients = @($validClients | Where-Object { Test-ExternalPrimitiveClientInstalled -Client $_ })
+        foreach ($client in $validClients) {
+            if ($installClients -notcontains $client) {
+                Add-DeploymentRecord -Category 'skill' -Id $id -Target $client -Status 'disabled' -MatrixValue 'excluded'
+            }
+        }
+
+        if ($installClients.Count -eq 0) {
+            continue
+        }
+
+        # One invocation covers every target: the CLI takes repeated -a and writes each agent's root
+        # itself, so KAT never has to know more than the table it mirrors from that same CLI.
+        $command = New-ExternalPrimitiveCommand -Source $definition.Source -Skill $definition.Skill -Clients $installClients
+        $commandResult = Invoke-ExternalPrimitiveCommand -Command $command -WorkingDirectory $repoRoot
+        $commandSucceeded = $commandResult.ExitCode -eq 0
+
+        if (-not $commandSucceeded) {
+            $detail = if (-not [string]::IsNullOrWhiteSpace($commandResult.Detail)) {
+                "command failed ($($commandResult.ExitCode)): $($commandResult.Detail)"
+            }
+            else {
+                "command failed ($($commandResult.ExitCode))."
             }
 
-            $stillInstalled = Test-Path -LiteralPath $installPath
+            foreach ($client in $installClients) {
+                Add-DeploymentRecord -Category 'skill' -Id $id -Target $client -Status 'blocked' -Path (Get-ExternalPrimitiveInstallPath -Client $client -Id $id) -Detail $detail
+            }
+            continue
+        }
+
+        $wantsUniversal = @($installClients | Where-Object { (Get-ExternalPrimitiveClient -Client $_).Universal }).Count -gt 0
+        $universalPath = Join-Path $script:universalGlobalSkillRoot $id
+        $failures = @{}
+
+        # npx wrote at most two directories — the claude root, and the shared universal root — each
+        # under upstream's own name. Rename into the KAT id so the prefix that namespaces these for
+        # the team survives, and so vendored and external ids stay one set of names.
+        $stagedRoots = [ordered]@{}
+        if ($installClients -contains 'claude') {
+            $stagedRoots[(Get-ExternalPrimitiveInstallRoot -Client 'claude')] = 'claude'
+        }
+        if ($wantsUniversal) {
+            # One file serves both universal clients, so render the fuller form unless codex owns the
+            # directory alone — the same rule ConvertTo-SkillDocument follows for its co-scanned
+            # copies. Codex simply ignores the keys it does not know.
+            $stagedRoots[$script:universalGlobalSkillRoot] = if ($installClients -contains 'copilot') { 'copilot' } else { 'codex' }
+        }
+
+        foreach ($stagedRoot in @($stagedRoots.Keys)) {
+            $stagedPath = Join-Path $stagedRoot $id
+            $upstreamPath = Join-Path $stagedRoot $definition.Skill
+
+            if ($upstreamPath -ne $stagedPath -and (Test-Path -LiteralPath $upstreamPath)) {
+                if (-not (Remove-ExternalPrimitiveInstall -Path $stagedPath)) {
+                    $failures[$stagedRoot] = 'existing install could not be replaced.'
+                    continue
+                }
+
+                try {
+                    Move-Item -LiteralPath $upstreamPath -Destination $stagedPath -Force -ErrorAction Stop
+                }
+                catch {
+                    $failures[$stagedRoot] = "rename from '$($definition.Skill)' failed: $($_.Exception.Message)"
+                    continue
+                }
+            }
+
+            if (-not (Test-Path -LiteralPath $stagedPath -PathType Container)) {
+                $failures[$stagedRoot] = "install reported success but '$($definition.Skill)' was not found in the target root."
+                continue
+            }
+
+            # Decoration is a render step, not stored state: the install above overwrites SKILL.md from
+            # upstream HEAD every sync, so patching after every install is what keeps it from drifting.
+            # An editor holding SKILL.md open is a transient, per-entry problem — report it and let the
+            # rest of the sync finish rather than aborting every remaining artifact.
+            try {
+                $decorations = Get-ExternalPrimitiveDecorations -Meta $definition.Meta -Id $id -Client $stagedRoots[$stagedRoot]
+                if (-not (Set-MarkdownFrontmatterScalars -Path (Join-Path $stagedPath 'SKILL.md') -Values $decorations)) {
+                    Add-Warning "external primitive '$id': SKILL.md in $stagedPath has no frontmatter; decoration was skipped."
+                }
+
+                if ($installClients -contains 'codex') {
+                    Set-ExternalPrimitiveOpenAiInvocation -InstallPath $stagedPath -Meta $definition.Meta
+                }
+            }
+            catch {
+                $failures[$stagedRoot] = "decoration failed: $($_.Exception.Message)"
+                continue
+            }
+
+            Write-ExternalPrimitiveSidecar -InstallPath $stagedPath -Definition $definition -Clients $installClients
+        }
+
+        # Copilot CLI resolves ~/.copilot/skills, which npx will not write for a universal agent, so
+        # mirror the finished universal copy there. Byte-identical by construction, which is what the
+        # co-scanning rule requires of trees Copilot may pick a winner from.
+        $copilotPath = Get-ExternalPrimitiveInstallPath -Client 'copilot' -Id $id
+        if ($installClients -contains 'copilot' -and -not $failures.ContainsKey($script:universalGlobalSkillRoot)) {
+            if (Remove-ExternalPrimitiveInstall -Path $copilotPath) {
+                try {
+                    New-Directory (Split-Path $copilotPath -Parent)
+                    Copy-Item -LiteralPath $universalPath -Destination $copilotPath -Recurse -Force -ErrorAction Stop
+                }
+                catch {
+                    $failures[(Get-ExternalPrimitiveInstallRoot -Client 'copilot')] = "mirror to Copilot CLI root failed: $($_.Exception.Message)"
+                }
+            }
+            else {
+                $failures[(Get-ExternalPrimitiveInstallRoot -Client 'copilot')] = 'existing Copilot CLI install could not be replaced.'
+            }
+        }
+
+        # The universal copy exists only because npx always writes it for a universal agent. Codex is
+        # the one client that actually reads it, so drop it when codex was not asked for — otherwise a
+        # copilot-only entry would silently surface in Codex too.
+        if ($wantsUniversal -and $installClients -notcontains 'codex') {
+            [void](Remove-ExternalPrimitiveInstall -Path $universalPath)
+        }
+
+        foreach ($client in $installClients) {
+            $clientRoot = Get-ExternalPrimitiveInstallRoot -Client $client
+            $clientPath = Join-Path $clientRoot $id
+            $failure = if ($failures.ContainsKey($clientRoot)) { $failures[$clientRoot] } elseif ($client -eq 'copilot' -and $failures.ContainsKey($script:universalGlobalSkillRoot)) { $failures[$script:universalGlobalSkillRoot] } else { $null }
+
             Add-DeploymentRecord `
                 -Category 'skill' `
                 -Id $id `
-                -Target $normalizedClient `
-                -Status $(if ($stillInstalled) { 'blocked' } elseif ($wasInstalled -and $removed) { 'removed' } else { 'disabled' }) `
-                -Path $(if ($wasInstalled) { $installPath } else { $null }) `
-                -MatrixValue $(if ($wasInstalled) { $null } else { 'excluded' }) `
-                -Detail $(if ($stillInstalled) { 'installed external primitive remains present.' } else { $null })
-            continue
+                -Target $client `
+                -Status $(if ($null -eq $failure) { 'ok' } else { 'blocked' }) `
+                -Path $clientPath `
+                -Detail $failure `
+                -MatrixValue $(if ($null -eq $failure) { 'global' } else { $null })
         }
-
-        if ([string]::IsNullOrWhiteSpace($command)) {
-            Add-DeploymentRecord -Category 'skill' -Id $id -Target $normalizedClient -Status 'blocked' -Detail 'command is required.'
-            continue
-        }
-
-        $commandResult = Invoke-ExternalPrimitiveCommand -Command $command -WorkingDirectory $repoRoot
-        $succeeded = $commandResult.ExitCode -eq 0
-        $detail = if ($succeeded) {
-            $null
-        }
-        elseif (-not [string]::IsNullOrWhiteSpace($commandResult.Detail)) {
-            "command failed ($($commandResult.ExitCode)): $($commandResult.Detail)"
-        }
-        else {
-            "command failed ($($commandResult.ExitCode))."
-        }
-
-        Add-DeploymentRecord `
-            -Category 'skill' `
-            -Id $id `
-            -Target $normalizedClient `
-            -Status $(if ($succeeded) { 'ok' } else { 'blocked' }) `
-            -Path $installPath `
-            -Detail $detail `
-            -MatrixValue $(if ($succeeded) { 'global' } else { $null })
     }
 }
 
@@ -2103,8 +2741,13 @@ function Invoke-PolicySync {
     $externalPrimitiveDefinitions = Get-ExternalPrimitiveDefinitions
     $mcpSettings = Get-SharedMcpSettings
 
+    # Amendments render as one more global instruction, so they flow through the same publish path,
+    # the same client markers, and the same cross-harness audit as every hand-authored instruction.
+    $amendmentSources = Get-AmendmentSources -ExternalPrimitiveDefinitions $externalPrimitiveDefinitions -SkillDefinitions $skillDefinitions
+    Add-SkillAmendmentSection -InstructionDefinitions $instructionDefinitions -AmendmentSources $amendmentSources
+
     # Runs before any managed root is cleared: a policy violation must not leave the trees half-published.
-    Assert-CrossHarnessPolicy -SkillDefinitions $skillDefinitions -InstructionDefinitions $instructionDefinitions -AgentDefinitions $allAgentDefinitions
+    Assert-CrossHarnessPolicy -SkillDefinitions $skillDefinitions -InstructionDefinitions $instructionDefinitions -AgentDefinitions $allAgentDefinitions -ExternalPrimitiveDefinitions $externalPrimitiveDefinitions
 
     try {
         $managedContexts = Get-ManagedContexts -Roots $roots -AgentDefinitions $allAgentDefinitions -InstructionDefinitions $instructionDefinitions -SkillDefinitions $skillDefinitions
@@ -2121,8 +2764,8 @@ function Invoke-PolicySync {
         Publish-TerminalFiles -Roots $roots
         Publish-Agents -Roots $roots -Definitions $allAgentDefinitions
         $instructionPublishResult = Publish-Instructions -Roots $roots -Definitions $instructionDefinitions
-        Publish-Skills -Roots $roots -Definitions $skillDefinitions -ExternalPrimitiveDefinitions $externalPrimitiveDefinitions
-        Install-ExternalPrimitives -Roots $roots -Definitions $externalPrimitiveDefinitions
+        Publish-Skills -Roots $roots -Definitions $skillDefinitions
+        Install-ExternalPrimitives -Definitions $externalPrimitiveDefinitions
         if ($null -eq $script:clientInstalled -or $script:clientInstalled.claude) {
             Publish-ClaudeDocument -Roots $roots -InstructionPublishResult $instructionPublishResult -Definitions $instructionDefinitions
         }
@@ -2197,11 +2840,6 @@ function Write-DeploymentMatrix {
         $records = @($deploymentRecords | Where-Object Category -eq $category)
         if ($records.Count -eq 0) { continue }
 
-		if (-not $hasArtifacts) {
-			Write-Host ''
-	        $hasArtifacts = $true
-		}
-
         $groups          = $records | Group-Object Id | Sort-Object Name
         $artifactWidth   = $ArtifactWidth
         $fixedWidths     = @($artifactWidth) + @($activeTargetDefs | ForEach-Object { $statusColWidth })
@@ -2246,6 +2884,17 @@ function Write-DeploymentMatrix {
 
             [pscustomobject]@{ Cells = $cells; CellColors = $cellColors }
         }
+
+        # Having records is not the same as having rows: a category whose every artifact is disabled
+        # or excluded filters down to nothing above, and a heading over an empty table says less than
+        # printing no section at all.
+        $rows = @($rows)
+        if ($rows.Count -eq 0) { continue }
+
+		if (-not $hasArtifacts) {
+			Write-Host ''
+	        $hasArtifacts = $true
+		}
 
         Write-AsciiTable -Title $categoryLabels[$category] -Headers $displayHeaders -Rows $rows -Color 'Cyan' -FixedWidths $fixedWidths -Alignments $alignments -HeaderAlignments $headerAligns -Footnotes $tableFootnotes -FootnoteColors $tableFootnoteColors
     }
@@ -2807,11 +3456,31 @@ function Assert-CrossHarnessPolicy {
     param(
         [object[]]$SkillDefinitions,
         [object[]]$InstructionDefinitions,
-        [object[]]$AgentDefinitions
+        [object[]]$AgentDefinitions,
+        [object[]]$ExternalPrimitiveDefinitions = @()
     )
 
     $errors = New-Object System.Collections.Generic.List[string]
     $knownIds = Get-KnownPrimitiveIds -SkillDefinitions $SkillDefinitions -InstructionDefinitions $InstructionDefinitions -AgentDefinitions $AgentDefinitions
+
+    # External primitives install into roots KAT also publishes to: ~/.claude/skills for the claude
+    # client, and ~/.agents/skills — KAT's codex global root — for copilot and codex, which the CLI
+    # collapses into one universal directory. A shared id means two writers own one directory: the
+    # vendored publish overwrites the install, and disabling the entry recursive-deletes the whole
+    # folder. A skill migrating to external has to leave AI/skills in the same commit.
+    $vendoredSkillIds = New-Object System.Collections.Generic.HashSet[string] ([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($definition in @($SkillDefinitions)) {
+        if ($null -eq $definition) { continue }
+        [void]$vendoredSkillIds.Add([string](Get-Prop $definition 'Id'))
+    }
+
+    foreach ($definition in @($ExternalPrimitiveDefinitions)) {
+        if ($null -eq $definition) { continue }
+        $externalId = [string](Get-Prop $definition 'Id')
+        if ($vendoredSkillIds.Contains($externalId)) {
+            $errors.Add("external primitive '$externalId': a vendored skill of the same id exists in AI/skills. Both write the same global skill directory — delete one.")
+        }
+    }
 
     $auditable = @(
         @($SkillDefinitions | ForEach-Object { [pscustomobject]@{ Kind = 'skill'; Definition = $_ } })
@@ -2938,13 +3607,17 @@ function Get-ConfiguredSkillAllowedTools {
 
     $clientProperty = $allowedTools.PSObject.Properties[$Client]
     if ($null -ne $clientProperty) {
-        return @(ConvertTo-StringArray $clientProperty.Value)
+        return ConvertTo-StringArray $clientProperty.Value
     }
 
-    return @(ConvertTo-StringArray $allowedTools)
+    return ConvertTo-StringArray $allowedTools
 }
 
 function ConvertTo-StringArray {
+    # Returns a comma-wrapped array so an empty result survives the return pipeline instead of
+    # collapsing to $null. That wrapper makes `@(ConvertTo-StringArray $x)` WRONG at every call site:
+    # @() captures the wrapper rather than flattening it, yielding a one-element array holding the
+    # array — for empty, single, and multi-value input alike. Assign or pass it directly.
     param([object]$Value)
 
     if ($null -eq $Value) {
@@ -3621,7 +4294,7 @@ function Resolve-ToolMappingForClient {
 
     return [pscustomobject]@{
         Found = $true
-        Values = @(ConvertTo-StringArray $clientMapping)
+        Values = ConvertTo-StringArray $clientMapping
     }
 }
 
@@ -3840,7 +4513,7 @@ function Get-SkillExcludedItemNames {
 
     $skillMeta = Get-Prop $Meta 'skills'
     $excludeItems = Get-Prop $skillMeta 'excludeItems'
-    return @(ConvertTo-StringArray (Get-Prop $excludeItems $Client))
+    return ConvertTo-StringArray (Get-Prop $excludeItems $Client)
 }
 
 function New-CopilotSkillDefinition {
@@ -4409,7 +5082,7 @@ function Install-RenderedSkill {
         return $false
     }
 
-    $renderedSkill = ConvertTo-SkillDocument -Meta $SkillDefinition.Meta -Body $SkillDefinition.Body -AllowedTools @(ConvertTo-StringArray (Get-Prop $SkillDefinition 'AllowedTools')) -Client $(if ($Target -eq 'codex') { 'codex' } else { 'default' })
+    $renderedSkill = ConvertTo-SkillDocument -Meta $SkillDefinition.Meta -Body $SkillDefinition.Body -AllowedTools (ConvertTo-StringArray (Get-Prop $SkillDefinition 'AllowedTools')) -Client $(if ($Target -eq 'codex') { 'codex' } else { 'default' })
     $allSucceeded = Write-ManagedFile -Path (Join-Path $targetDirectory 'SKILL.md') -Content $renderedSkill -ValidationLabel "Skill '$id'"
 
     $excludedItemNames = @('SKILL.md', 'meta.json', 'meta.jsonc', 'meta.vscode.settings.jsonc')

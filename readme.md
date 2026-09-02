@@ -53,17 +53,13 @@ Codex is the one exception to "everything goes everywhere": it is **opt-in per a
 
 ### Agents
 
-| Name | Description |
-|------|-------------|
-| Anvil | Evidence-first coding agent. Verifies before presenting. Attacks its own output. Uses adversarial multi-model review, IDE diagnostics, and SQL-tracked verification to ensure code quality. |
-| KatApp Assistant | Expert assistant for KatApp runtime and KAML view development. Answers questions about directives, state, KatApp client APIs, RBLe result consumption in views, and petite-vue integration. |
-| Nexgen Assistant | Expert assistant for Nexgen server-side BRD and CalcEngine integration: BRD structure, result-tab exports, API DataSource mappings, xDS data model flow, command processing, and cacheRefreshKeys. |
+None are currently published. The sync still supports agents in full — see [Primitives.md](.vscode/Documentation/Primitives.md#agents) for how to add one.
 
 ### Instructions
 
 | Name | Description |
 |------|-------------|
-| KAT Shared Instruction | Shared KAT communication, code, and .NET guidance rendered for Copilot and Claude. |
+| KAT Shared Instruction | Shared KAT communication, code, and .NET guidance, rendered for Copilot, Claude, and Codex. Also carries the generated **Skill Amendments** section — local rules that override an installed skill's own instructions without editing it. |
 | Nexgen Instructions | Nexgen/LWC instructions rendered for Copilot and Claude. |
 | Tally Instructions | Spending instructions when working with Tally and new bank exports. |
 
@@ -71,14 +67,15 @@ Codex is the one exception to "everything goes everywhere": it is **opt-in per a
 
 | Name | Description |
 |------|-------------|
-| frontend-design | Create distinctive, production-grade frontend interfaces with high design quality. |
-| kat-caveman | Ultra-compressed communication mode. Cuts token usage ~75% by dropping filler, articles, and pleasantries. |
-| kat-grill-me | Grill the user relentlessly about a plan or design before building. |
-| kat-handoff | Compact the current conversation into a handoff document for another agent to pick up. |
+| kat-code-review | Two-axis code review (Standards + Spec) since a fixed point. Runs both reviews in parallel. *External: upstream `mattpocock/skills`.* |
+| kat-frontend-design | Create distinctive, production-grade frontend interfaces with high design quality. *External: upstream `anthropics/skills`.* |
+| kat-grill-me | Grill the user relentlessly about a plan or design before building. *External: upstream `mattpocock/skills`.* |
+| kat-handoff | Compact the current conversation into a handoff document for another agent to pick up. *External: upstream `mattpocock/skills`.* |
 | kat-policies | Update all AI features (commands, skills, agents, etc.) for Claude and Copilot. |
-| kat-review | Two-axis code review (Standards + Spec) since a fixed point. Runs both reviews in parallel. |
-| primitive-evaluator | Evaluate and improve existing prompt primitives such as skills, agents, and instructions. |
-| visual-explainer | Generate self-contained HTML pages that visually explain systems, code changes, plans, and data. *Plus child command skills.* |
+| kat-skill-creator | Create new skills, and evaluate or improve existing ones with A/B grading against a baseline. *External: upstream `anthropics/skills`.* |
+| kat-visual-explainer | Generate self-contained HTML pages that visually explain systems, code changes, plans, and data. *External: upstream `nicobailon/visual-explainer`.* |
+
+Most third-party skills install straight from upstream rather than being copied into this repo, so their content stays current automatically. Where a skill needs local behaviour changes, those are declared as **amendments** alongside the install rather than by editing upstream's text — see [Primitives.md](.vscode/Documentation/Primitives.md#amendments).
 
 ### Tools
 
@@ -116,9 +113,9 @@ Codex support covers **instructions and skills only**. Agents and MCP servers ar
 Two things make Codex different from the other clients, and both are why it is opt-in:
 
 - **`AGENTS.md` is shared with humans and other tools.** It is a cross-vendor convention file, not a KAT-private tree like `.github/` or `.claude/`. The sync therefore owns only the region between `<!-- kat:start -->` and `<!-- kat:end -->` and leaves everything else in the file alone. Turning Codex off strips that region — including the delimiters — and deletes the file only if the region was all it contained.
-- **`%USERPROFILE%\.agents\skills\` is not exclusively ours.** External primitives installed for Copilot land in the same folder, and uninstalling one deletes the whole `<id>` directory. When a Codex skill id would collide with one, the sync warns and skips rather than writing into the contested folder.
+- **`%USERPROFILE%\.agents\skills\` is not exclusively ours.** `npx skills` writes every *universal* agent's global install there — both Copilot and Codex — so external primitives share the folder, and uninstalling one deletes the whole `<id>` directory. A vendored skill id that collides with an external primitive id is rejected as an error before anything is published.
 
-> **Codex output does not stay Codex-only.** Copilot reads `AGENTS.md` at both surfaces, and reads `.agents/skills` in VS Code while resolving `.github/skills` in the CLI. Since that cannot be configured away, the rule is to make the renders identical rather than to control who reads them: bodies in co-scanned output must name primitives without an invocation sigil, and `bodyReplacements.codex` is rejected for skills and instructions. The sync enforces both. See [Cross-Harness Reads](.vscode/Documentation/Primitives.md#cross-harness-reads) for the full matrix and [.vscode/Plans/codex-conflicts.md](.vscode/Plans/codex-conflicts.md) for the reasoning.
+> **Codex output does not stay Codex-only.** Copilot reads `AGENTS.md` at both surfaces, and reads `.agents/skills` in VS Code while resolving `.github/skills` in the CLI. Since that cannot be configured away, the rule is to make the renders identical rather than to control who reads them: bodies in co-scanned output must name primitives without an invocation sigil, and `bodyReplacements.codex` is rejected for skills and instructions. The sync enforces both. See [Cross-Harness Reads](.vscode/Documentation/Primitives.md#cross-harness-reads) for the full matrix and [codex-conflicts.md](.vscode/Plans/Implemented/external-primitives-handoff.codex-conflicts.md) for the reasoning.
 
 ### Compatibility Notes
 

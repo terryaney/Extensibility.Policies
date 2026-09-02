@@ -166,7 +166,7 @@ Codex is the one client that behaves differently at the metadata level, so its r
 - **`instructions.scope` degrades to prose.** A scope of `["**/*.cs", "**/*.ts"]` renders as a generated sentence above the body and raises a compatibility warning that it is a soft gate. `["**"]` or an absent scope renders nothing extra.
 - **Skill frontmatter is `name` + `description` only.** `license`, `compatibility`, and `context` are dropped, per Codex's documented frontmatter contract. (`allowed-tools` is never emitted for any client — see [KatPolicies.md](KatPolicies.md#tool-mapping).)
 - **Bundled `commands/` and `agents/` folders are not copied.** Codex has no analogue for either. Every other support file — `references/`, `templates/`, `scripts/`, loose files — travels to Codex like any other client.
-- **Global skill ids can collide.** A Codex-enabled global skill whose id matches a `"client": "copilot"` entry in `AI/external.primitives.jsonc` is skipped with a warning, because both would occupy `~/.agents/skills/<id>/`.
+- **Global skill ids can collide.** A vendored skill id that also appears in `AI/external.primitives.jsonc` is a hard error, not a warning: both writers would own the same global skill directory, and disabling the external entry recursive-deletes it. Migrate, don't duplicate.
 - **Codex output is mostly not Codex-only.** `.agents/skills`, `~/.agents/skills`, and `<repo>/AGENTS.md` are all read by Copilot; only `~/.codex/AGENTS.md` is Codex's alone. Enabling Codex on an artifact widens its audience, so treat `codex` markers as "Codex and Copilot" — see [Markers Are Not Client-Exclusive](#markers-are-not-client-exclusive).
 
 ### Invocation Flags

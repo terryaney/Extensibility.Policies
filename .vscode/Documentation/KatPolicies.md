@@ -70,7 +70,7 @@ The renderer is intentionally conservative about what it deletes.
 Two Codex destinations do not fit the "own a directory and clean everything in it" model, so they are handled by targeted cleanup instead.
 
 - **`AGENTS.md`** sits at a repository root, which contains the entire repository and can therefore never be an ownable managed root. Cleanup walks an explicit list of `AGENTS.md` paths built from the enabled instruction repositories plus `~/.codex`, and splices each one.
-- **`~/.agents/skills/`** is shared with Copilot-client external primitives. Registering it as a managed root would let a Codex cleanup pass delete another client's installs. Cleanup instead removes exactly the ids Codex stopped publishing, and only when every file in the folder is still KAT-managed.
+- **`~/.agents/skills/`** is shared with external primitives, because `npx skills` writes every *universal* agent's global install there — `github-copilot` and `codex` both. Registering it as a managed root would let a Codex cleanup pass delete those installs. Cleanup instead removes exactly the ids Codex stopped publishing, and only when every file in the folder is still KAT-managed — which an external install never is, since its `.kat-external.json` sidecar carries no `CreatedBy` marker.
 
 ### Codex AGENTS.md Region
 
@@ -89,40 +89,38 @@ A pre-existing hand-written `AGENTS.md` is not KAT-owned, so the first sync repo
 
 ### Shared Skill Directory
 
-`~/.agents/skills/<id>/` is both the Codex global skill location and the install target for Copilot-client entries in `AI/external.primitives.jsonc`. Copilot's own *rendered* skills are not involved — those go to `~/.copilot/skills/<id>/` — so a skill with both `copilot: true` and `codex: true` writes two files in two roots and is not a conflict.
+`~/.agents/skills/<id>/` is the Codex global skill location, and it is also where `npx skills` writes any *universal* agent's global install — which includes both `github-copilot` and `codex`. Copilot's own *rendered* skills are not involved — those go to `~/.copilot/skills/<id>/`, and so does the external Copilot mirror — so a skill with both `copilot: true` and `codex: true` writes two files in two roots and is not a conflict.
 
-A real collision requires an `external.primitives.jsonc` entry with `"client": "copilot"` whose id matches a Codex-enabled global skill id. The sync computes this as one id-set intersection at publish time; on a hit it warns and lets Codex skip that skill. The reason it warns rather than ignoring: disabling an external primitive runs a recursive delete on `~/.agents/skills/<id>`, which would take the Codex skill folder with it. Silent overlap there is destructive, not merely confusing.
+A real collision is an `external.primitives.jsonc` id that matches a vendored skill id, in any of the three shared roots. `Assert-CrossHarnessPolicy` computes this as one id-set intersection before any managed root is cleared, and **errors**. It errors rather than warns because disabling an external primitive runs a recursive delete on the whole `<id>` folder, which would take the vendored skill's output with it. Silent overlap there is destructive, not merely confusing — and the fix is unambiguous: a skill that migrates to external must leave `AI/skills` in the same commit.
 
 ## Vendored vs External Primitives
 
 Third-party skills can enter the repo two ways, and the choice is not a preference — it follows from what the skill needs.
 
-**External primitive** (`AI/external.primitives.jsonc`): the manifest records an install command, and `update.ps1` re-runs it on every sync. Because the command is an `npx skills add ... --yes` re-add, each sync pulls upstream HEAD, so the entry tracks upstream automatically. There is no lockfile and no way to pin a version. KAT does not read, render, or own the resulting files — it only knows the one install path, so that it can delete the folder when the entry is disabled.
+**External primitive** (`AI/external.primitives.jsonc`): the manifest declares `source`, the upstream `skill` name, and a `clients` array; `update.ps1` compiles the `npx skills add` invocation and re-runs it on every sync. Because that is a `--yes` re-add, each sync pulls upstream HEAD, so the entry tracks upstream automatically. There is no lockfile participation and no way to pin a version. KAT does not own the body — it renames the directory to the KAT id and patches frontmatter afterwards, then can delete the folder when the entry is disabled. See [External Primitives](Primitives.md#external-primitives) for the install paths and the decoration steps.
 
 **Vendored** (`AI/skills/<id>/`): canonical body plus `meta.jsonc`, rendered per client by the sync.
 
-What the installer genuinely cannot do — these force vendoring today:
+Post-install decoration moved several requirements off this list. What still forces vendoring:
 
 | Requirement | Why external cannot serve it |
 |---|---|
-| Body is modified, or needs per-client wording | `npx skills` copies bytes. It has no client markers, `bodyReplacements`, or placeholder substitution, and writes the same file to every target. |
-| Per-user or per-repo gating | `applyForUsers` and `enabled.repositories` are KAT metadata; the installer has no equivalent. |
-| Frontmatter KAT supplies | `context`, the invocation flags, and the `kat-` id prefix come from `meta.jsonc`. An external install gets upstream's frontmatter and upstream's id. |
+| Body must be *rewritten* | `npx skills` copies bytes; decoration touches frontmatter only. But a body whose behaviour merely needs *correcting* no longer forces vendoring — see [Amendments](Primitives.md#amendments), which override the skill from an instruction instead. Vendoring is only forced when the prose itself must differ. |
+| Per-repo gating | `enabled.repositories` is KAT metadata and external entries are global-scope only. (`applyForUsers` *is* honoured for external entries.) |
 | Harness-specific tool names in the body | Cross-client tool translation is `bodyReplacements` / `{{KAT_*}}`, applied only by the renderer. |
+| A `commands/` subfolder | Only the renderer flattens commands into sibling `<skill>.<command>` skills. This is a post-install file move rather than a content change, so it could in principle apply to an external install — not implemented; see [.vscode/Plans/](../Plans/). |
 
-Note the asymmetry that makes this easy to get wrong: modifying the **frontmatter** is enough to force vendoring even when the **body** is byte-identical to upstream. `kat-grill-me` and `kat-handoff` are exactly that case — their bodies match upstream, but `meta.jsonc` adds `context: fork`.
+Frontmatter KAT supplies is **no longer** on that list. `context`, the invocation flags, and the `kat-` prefix are applied as post-install decoration, so a skill whose body matches upstream can go external even though KAT changes its frontmatter and its id. `kat-grill-me` and `kat-handoff` were exactly that case and have migrated.
 
-A `commands/` subfolder is **not** on that list. Copilot ignores a nested `commands/` folder and only the renderer flattens commands into sibling `<skill>.<command>` skills — but that is a post-install file move, not a content change, so it could in principle be applied to an external install without taking over ownership of the body. Not implemented; see the open design work in [.vscode/Plans/](../Plans/).
-
-The cost of vendoring is drift: `metadata.commit` records what was imported, but nothing compares it to upstream. Re-checking that pin is a manual step.
+The cost of vendoring is drift: `metadata.commit` records what was imported, but nothing compares it to upstream. Re-checking that pin is a manual step. External entries have the opposite trade — no drift, but no pin either.
 
 ### Install Path Tracking
 
-The sync does not record where an external primitive landed — `Get-ExternalPrimitiveInstallPath` *derives* the path from the `client` value through a hardcoded switch, and uninstall (`enabled: false`) recursive-deletes that derived path.
+The sync derives install paths rather than recording them, but it derives them from the CLI's own rule instead of guessing: any agent whose project directory is `.agents/skills` is *universal*, and universal agents install to the shared `~/.agents/skills` at global scope regardless of the per-agent global path in the CLI's agent table. Reading that table alone is what produced the earlier — wrong — claim that `client: copilot` installs to `~/.copilot/skills`; `getAgentBaseDir()` overrides it.
 
-That derivation is currently wrong for Copilot. The CLI installs global Copilot skills to `%USERPROFILE%\.copilot\skills\<id>`; the switch returns `%USERPROFILE%\.agents\skills\<id>`. No entry uses `client: copilot` today, so nothing hits it, but a `copilot` entry would install to one path and be "uninstalled" from another, silently orphaning the install. The same mismatch weakens the [Shared Skill Directory](#shared-skill-directory) guard at global scope.
+Provenance is recorded even though paths are derived: every install carries a `.kat-external.json` sidecar naming the source, upstream skill, clients, and install time. `npx` itself leaves nothing in the tree — `skills list` labels sources from the lockfile, not the directory.
 
-The CLI exposes `skills list` and `skills remove -g -a -s`, so it can report and undo its own installs across every agent it supports. Delegating to it would remove this class of bug rather than fixing one path. It also writes a `skills-lock.json` that `experimental_install` can restore from.
+Delegating removal to `skills remove -g -a -s` remains possible but is not used: its output is not machine-readable, and `skills list` reports one merged row per skill name rather than a per-agent path, so it cannot drive an exact uninstall.
 
 ## Tool Confirmation Notes
 
@@ -167,7 +165,7 @@ Requesting either anyway (`codex: true` on an agent, or on an MCP server in the 
 
 Within the supported types, these differences are worth knowing:
 
-- `enabled.codex` defaults to `false` while `copilot` and `claude` default to `true`. This is deliberate. Codex writes into shared locations — `AGENTS.md` is a merge target and `~/.agents/skills` is shared with Copilot external primitives — so a silent opt-in would have consequences the other clients do not.
+- `enabled.codex` defaults to `false` while `copilot` and `claude` default to `true`. This is deliberate. Codex writes into shared locations — `AGENTS.md` is a merge target and `~/.agents/skills` is shared with external primitive installs — so a silent opt-in would have consequences the other clients do not.
 - Instruction output carries no YAML frontmatter. Copilot's `applyTo:` has no Codex equivalent.
 - `instructions.scope` becomes a prose preamble ("The following applies when working on files matching …") because an `AGENTS.md` body is unconditionally active for its whole subtree. The sync warns that this is a soft gate, not enforcement. A scope of `**` or an absent scope produces no preamble.
 - Skill frontmatter is `name` + `description` only, per Codex's own skill-creator sample. License, compatibility, and context are dropped; the first two silently, `context` with a warning because it is the one with behavioral consequence.
@@ -215,11 +213,6 @@ Current notable gaps:
 
 ### Current Compatibility Summary
 
-The remaining compatibility warnings are the intentional Copilot orchestration omissions for currently-enabled agents that use `subAgents`:
+No agents are defined today, so the Copilot orchestration omissions that used to dominate this summary (agents declaring `subAgents`, which Claude has no frontmatter for) no longer fire. They will return with the first agent that uses those fields.
 
-1. `kat-nexgen` (enabled, has `subAgents`)
-2. `Ultralight.Orchestrator` (disabled, has `subAgents`)
-
-Disabled agents (Code Review, Ultralight suite) do not produce warnings during sync.
-
-Codex adds further warning kinds, none of which appear unless an artifact opts in: an out-of-scope request (`codex: true` on an agent or MCP server), a scope reduced to a prose preamble, a global skill id colliding with a Copilot-client external primitive, and the co-scanning warnings in [Metadata.md](Metadata.md#codex-skill-warnings). The summary is dynamic — run `update.ps1` to see the current state.
+Codex adds further warning kinds, none of which appear unless an artifact opts in: an out-of-scope request (`codex: true` on an agent or MCP server), a scope reduced to a prose preamble, and the co-scanning warnings in [Metadata.md](Metadata.md#codex-skill-warnings). A vendored skill id that collides with an external primitive id is an *error*, not a warning — see [Shared Skill Directory](#shared-skill-directory). The summary is dynamic — run `update.ps1` to see the current state.
