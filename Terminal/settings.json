@@ -45,6 +45,19 @@
             [
                 {
                     "icon": null,
+                    "profile": "{ddec2604-fe4b-4ed9-ac96-01e08b74cbcb}",
+                    "type": "profile"
+                },
+                {
+                    "icon": null,
+                    "profile": "{2672feb7-8872-4a1b-b507-ec407b34a6b9}",
+                    "type": "profile"
+                },
+                {
+                    "type": "separator"
+                },
+                {
+                    "icon": null,
                     "profile": "{aaf1b2a3-2ed4-4083-b50f-6ff69a8d2a48}",
                     "type": "profile"
                 },
@@ -163,7 +176,31 @@
                 "hidden": false,
                 "icon": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\Git.Services.ico",
                 "name": "KatApp Framework",
-                "startingDirectory": "C:\\BTR\\KatApp"
+                "startingDirectory": "C:\\BTR\\Camelot\\RCL\\KatApp"
+            },
+            {
+                "backgroundImage": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\Git-Logo.png",
+                "backgroundImageAlignment": "bottomRight",
+                "backgroundImageOpacity": 0.1,
+                "backgroundImageStretchMode": "none",
+                "commandline": "pwsh.exe",
+                "guid": "{ddec2604-fe4b-4ed9-ac96-01e08b74cbcb}",
+                "hidden": false,
+                "icon": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\Git.Services.ico",
+                "name": "BTR Extensibility",
+                "startingDirectory": "C:\\BTR\\Extensibility"
+            },
+            {
+                "backgroundImage": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\Git-Logo.png",
+                "backgroundImageAlignment": "bottomRight",
+                "backgroundImageOpacity": 0.1,
+                "backgroundImageStretchMode": "none",
+                "commandline": "pwsh.exe",
+                "guid": "{2672feb7-8872-4a1b-b507-ec407b34a6b9}",
+                "hidden": false,
+                "icon": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\Git.Services.ico",
+                "name": "Camelot Extensibility",
+                "startingDirectory": "C:\\BTR\\Camelot\\Extensibility"
             },
             {
                 "backgroundImage": "C:\\BTR\\Extensibility\\PowerShell\\Icons\\Git-Logo.png",
