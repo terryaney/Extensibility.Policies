@@ -17,7 +17,7 @@ This is Nexgen-owned because it concerns API DataSource mappings and cache refre
 ## Retrieval Order
 
 1. Read the workspace index first: `c:\BTR\Camelot\RCL\KatApp\.vscode\Documentation\KatApp.md`.
-   - If the workspace index is not available, fetch the same patterns from `https://raw.githubusercontent.com/terryaney/Documentation.Camelot/main/KatApp/KatApp.md`.
+   - If the workspace index is not available, fetch the same patterns from `https://raw.githubusercontent.com/terryaney-conduent/Documentation.Camelot/main/KatApp/KatApp.md`.
 2. Read only the smallest section needed for the current task. Do not load the full document unless the task truly spans multiple sections.
 3. Fast routing options listed below. If the question is outside these areas, use the `KatApp.md` index file to determine the proper section to fetch.
    - Start with `KatApp.03.State.md` for `rbl.value`, `rbl.source`, state shape, and result processing questions.

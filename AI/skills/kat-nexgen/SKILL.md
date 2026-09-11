@@ -19,7 +19,7 @@ This is KatApp-owned because it concerns `v-ka-modal` rendering and view-side RB
 ## Retrieval Order
 
 1. Read the local workspace document first: `./.vscode/Documentation/CalcEngines.md`.
-2. If the workspace document is not enough, fetch only the relevant section from `https://raw.githubusercontent.com/terryaney/Documentation.Camelot/main/Nexgen/CalcEngines.md`.
+2. If the workspace document is not enough, fetch only the relevant section from `https://raw.githubusercontent.com/terryaney-conduent/Documentation.Camelot/main/Nexgen/CalcEngines.md`.
 3. Read only the heading or section needed for the current task. Do not load the entire document unless the task spans multiple sections.
 
 ## Code Anchors
