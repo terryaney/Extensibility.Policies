@@ -1,5 +1,4 @@
 
-
 You are categorizing unknown transactions and managing merchant rules. Tally generates the review
 file; you apply it. Run the report, open the review file, interpret the user's natural-language
 instructions, apply them to `merchants.rules` and the CSV tagging column, and loop until 0 unknowns
@@ -27,17 +26,40 @@ screen** — re-read before acting on any id-based instruction, even if you just
 `reviews:` continues the same id sequence as `unknowns:`, so a row number refers to exactly one row
 across both lists.
 
+## Source summary
+
+At the start of a categorization session, identify the CSV files in `tally/data/` that are not yet
+listed in `tally/config/inventory.yaml`, before the first `tally up`. Keep that list for the session;
+the first parse registers those files, so it cannot be reconstructed from the inventory afterward.
+
+After the first `tally up`, give a compact summary for each of those newly processed source files
+before presenting `categorization.yaml` or asking the user to process unknowns. Give it once per
+session; do not repeat it after later `tally up` passes that apply categorization answers.
+Aggregate transactions that received the same effective categorization, even when their raw merchant
+names repeat. Include the count, total amount, and category/subcategory for each group. Keep payments,
+transfers, credits, refunds, and interest separate from purchase spending; report purchase spending and
+net activity separately. State any remaining unknown count for that file. Do not list every transaction
+unless there are too few to benefit from aggregation or the user asks for detail.
+
+Derive the groups from Tally's actual matching rules, not a guess based solely on merchant names. Use
+the source format to read the relevant fields and `tally explain` or the matching rules as needed. A
+single merchant can legitimately split across categories when its rules depend on amount, source,
+memo, or tags.
+
 ## Workflow
 
-1. Run `tally up`. If `settings.yaml` has `generate_categorization_file: false`, or tally prints a
+1. Capture the session's unregistered CSV file list, then run `tally up`. If `settings.yaml` has
+   `generate_categorization_file: false`, or tally prints a
    "generation is off" / STALE warning, `categorization.yaml` is stale — do not read or act on it.
    Fall back to the prose workflow instead: `tally discover`, reading `merchants.rules`, and
    conversation with the user.
 2. Read tally's status line: the unknown/carried-forward/dropped breakdown, an "awaiting review"
    count when `reviews:` is non-empty, and a "still unknown after apply" count if a previous apply
-   pass silently failed. 0 unknown **and** 0 awaiting review → skip to step 7. If unknowns are 0 but
+    pass silently failed. 0 unknown **and** 0 awaiting review → skip to step 8. If unknowns are 0 but
    review rows remain, there is still work waiting.
-3. Open `categorization.yaml` — tally prints its path, and the companions sit next to it. Check the
+3. On the first pass only, give the **Source summary** before opening `categorization.yaml` or
+   discussing its unknowns.
+4. Open `categorization.yaml` — tally prints its path, and the companions sit next to it. Check the
    `TERM_PROGRAM` environment variable (an environment check, not a harness check, so it behaves
    identically under Claude, Copilot, or Codex, terminal or VS Code extension): if it is `vscode`,
    open with `code -r <path>` to reuse the window; otherwise print the path and let the user open
@@ -47,15 +69,15 @@ across both lists.
    [YAML extension by Red Hat](https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml)
    is recommended for Ctrl+Space autocomplete on `useRule`, `edits.category` and `edits.tags` values, 
    but any editor with YAML language support should work.
-4. Read the file once, then immediately run the **Policy** pass below — it applies to `unknowns:`
+5. Read the file once, then immediately run the **Policy** pass below — it applies to `unknowns:`
    rows only, never `reviews:` rows. Tell the user how many unknown rows are waiting, how many
    review rows await confirmation, how many you auto-applied, and how many you annotated. Do not
    dump rows into chat unless asked; if asked ("show me the next 15"), read the file and render the
    slice yourself. Tally will never gain a listing command for this, and `tally discover`'s table is
    a different, tally-owned output that this feature does not extend.
-5. Wait for the user — typed answers in the file, a chat instruction, or both. See **Phrasebook**.
-6. Re-read the YAML fresh, apply what was asked (see **Applying answers**), then go to step 1.
-7. If `merchants.rules` was modified this session, regenerate the all-rules report via
+6. Wait for the user — typed answers in the file, a chat instruction, or both. See **Phrasebook**.
+7. Re-read the YAML fresh, apply what was asked (see **Applying answers**), then go to step 1.
+8. If `merchants.rules` was modified this session, regenerate the all-rules report via
    the `tally-rules` skill. Then open the HTML report in the browser for the user.
 
 ## Policy: auto-apply vs. annotate thresholds
