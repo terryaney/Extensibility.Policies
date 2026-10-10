@@ -1,4 +1,5 @@
 
+
 You are categorizing unknown transactions and managing merchant rules. Tally generates the review
 file; you apply it. Run the report, open the review file, interpret the user's natural-language
 instructions, apply them to `merchants.rules` and the CSV tagging column, and loop until 0 unknowns
@@ -32,18 +33,35 @@ At the start of a categorization session, identify the CSV files in `tally/data/
 listed in `tally/config/inventory.yaml`, before the first `tally up`. Keep that list for the session;
 the first parse registers those files, so it cannot be reconstructed from the inventory afterward.
 
-After the first `tally up`, give a compact summary for each of those newly processed source files
-before presenting `categorization.yaml` or asking the user to process unknowns. Give it once per
-session; do not repeat it after later `tally up` passes that apply categorization answers.
-Aggregate transactions that received the same effective categorization, even when their raw merchant
-names repeat. Include the count, total amount, and category/subcategory for each group. Keep payments,
-transfers, credits, refunds, and interest separate from purchase spending; report purchase spending and
-net activity separately. State any remaining unknown count for that file. Do not list every transaction
-unless there are too few to benefit from aggregation or the user asks for detail.
+After the first `tally up`, generate `tally/config/categorization.autosummary.yaml` for each newly
+processed source file before presenting `categorization.yaml` or asking the user to process unknowns.
+Give it once per session; do not regenerate it after later `tally up` passes that apply categorization
+answers. The file is an agent-generated, replaceable artifact with this shape:
 
-Derive the groups from Tally's actual matching rules, not a guess based solely on merchant names. Use
-the source format to read the relevant fields and `tally explain` or the matching rules as needed. A
-single merchant can legitimately split across categories when its rules depend on amount, source,
+```yaml
+sources:
+  - file: "data/example.csv"
+    account: "Example account"
+    containers:
+      - category: "Food"
+        subcategory: "Restaurant"
+        transactions:
+          - "42 2026-01-01 $12.34 Example merchant"
+```
+
+Include only transactions that matched an existing rule; omit all unknown and review rows. Aggregate
+transactions that received the same effective categorization, even when their raw merchant names repeat.
+Sort `containers` alphabetically by category, then subcategory. List every matching transaction in
+`transactions` as `{LineNum} {Date} {Amount} {Description}`, where `LineNum` is the one-based physical
+CSV line number including the header. Do not omit transaction lines to keep the summary compact. Derive
+every container from Tally's actual matching rules, not a guess based solely on merchant names.
+
+**Mandatory output gate:** Do not open, link, summarize, or ask the user to edit
+`categorization.yaml` until `categorization.autosummary.yaml` has been generated and its path has been
+given to the user for every newly processed file.
+
+Use the source format to read the relevant fields and `tally explain` or the matching rules as needed.
+A single merchant can legitimately split across categories when its rules depend on amount, source,
 memo, or tags.
 
 ## Workflow
@@ -57,8 +75,9 @@ memo, or tags.
    count when `reviews:` is non-empty, and a "still unknown after apply" count if a previous apply
     pass silently failed. 0 unknown **and** 0 awaiting review → skip to step 8. If unknowns are 0 but
    review rows remain, there is still work waiting.
-3. On the first pass only, give the **Source summary** before opening `categorization.yaml` or
-   discussing its unknowns.
+3. On the first pass only, satisfy the **Mandatory output gate** by generating
+   `categorization.autosummary.yaml` and providing its path before opening `categorization.yaml`,
+   discussing its unknowns, or presenting its path.
 4. Open `categorization.yaml` — tally prints its path, and the companions sit next to it. Check the
    `TERM_PROGRAM` environment variable (an environment check, not a harness check, so it behaves
    identically under Claude, Copilot, or Codex, terminal or VS Code extension): if it is `vscode`,
