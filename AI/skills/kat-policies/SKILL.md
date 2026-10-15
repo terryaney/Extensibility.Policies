@@ -20,6 +20,7 @@ Use the shared MCP configuration in `C:\BTR\Extensibility\Policies\AI\skills\kat
 
 - `C:\BTR\Extensibility\Policies\scripts\install-context7-remote.ps1`
 - `C:\BTR\Extensibility\Policies\scripts\install-github-remote.ps1`
+- `C:\BTR\Extensibility\Policies\scripts\install-playwright.ps1`
 
 Only collect `CONTEXT7_API_KEY` in chat when **all** of the following are true:
 
@@ -36,6 +37,7 @@ Only collect a GitHub PAT in chat when **all** of the following are true:
 When collection is required, immediately invoke {{KAT_QUESTION_TOOL_GUIDANCE}} in chat and collect the credential there. Do not reply with narrative such as "I can't collect secrets through chat tooling safely here" and do not skip the question-tool step when the helper reported a missing credential. The prompt text must explicitly say that leaving the value blank, skipping, or cancelling means "continue without this credential". Use a single credential field and treat an empty response, skipped form, or cancelled form as "continue without credential" rather than an invalid blank that should be re-prompted. In that case, do not cancel the workflow; continue with the required non-interactive sync and let the final output report the blocked Context7 or GitHub status. After collection, save any provided value into `User` and current `Process` scope before continuing.
 
 If a server is not configured to install, or no applicable client needs it, do not ask for its credential.
+Playwright MCP does not require a credential.
 
 Never rely on `Read-Host` or ask the user to focus the terminal for credentials during chat-driven runs.
 
@@ -60,6 +62,7 @@ Optional dry-run preview for MCP bootstrap checks only:
 ```powershell
 & "C:\BTR\Extensibility\Policies\scripts\install-context7-remote.ps1" -WhatIf -NonInteractive
 & "C:\BTR\Extensibility\Policies\scripts\install-github-remote.ps1" -WhatIf -NonInteractive
+& "C:\BTR\Extensibility\Policies\scripts\install-playwright.ps1" -WhatIf -NonInteractive
 ```
 
 4. Keep workflow chat output minimal.

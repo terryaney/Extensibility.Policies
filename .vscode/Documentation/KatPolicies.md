@@ -159,7 +159,7 @@ Claude has a different artifact model from Copilot.
 Codex receives instructions and skills only. Agents and MCP servers are deferred, not rejected on principle:
 
 - **Agents** — a Codex subagent is `.codex/agents/<id>.toml` (`~/.codex/agents/` global, `<repo>/.codex/agents/` repo-local): a TOML **config layer** — model, reasoning, sandbox, mcp, skills — not a body with frontmatter. There is no mapping from canonical `.agent.md` frontmatter to it; it needs a separate emitter. Recorded as a known gap, not a scheduled task, since agents are currently disabled everywhere and the Codex schema is young.
-- **MCP** — Codex configures servers in `config.toml`, while the three `install-*.ps1` helpers write JSON.
+- **MCP** — Codex configures servers in `config.toml`, while the JSON-based `install-*.ps1` helpers write client configuration files.
 
 Requesting either anyway (`codex: true` on an agent, or on an MCP server in the shared `mcp` block) produces an `unsupported` cell plus a compatibility warning rather than a silent `excluded`.
 

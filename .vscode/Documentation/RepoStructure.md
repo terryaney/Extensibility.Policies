@@ -17,6 +17,7 @@ For how the renderer transforms this structure into published artifacts, see [Ka
 | `/scripts/install-context7-remote.ps1` | Context7 MCP bootstrap helper. |
 | `/scripts/install-github-remote.ps1` | GitHub MCP bootstrap helper. |
 | `/scripts/install-katledger.ps1` | KatLedger MCP bootstrap helper. |
+| `/scripts/install-playwright.ps1` | Playwright MCP bootstrap helper. |
 | `/.vscode/Documentation/` | Developer documentation (this folder). |
 
 ## AI Layout
@@ -49,6 +50,7 @@ Canonical AI content lives under `/AI` and is authored once, then rendered into 
   install-context7-remote.ps1
   install-github-remote.ps1
   install-katledger.ps1
+  install-playwright.ps1
   Kat.Policy.Mcp.psm1
 ```
 

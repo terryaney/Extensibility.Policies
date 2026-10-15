@@ -201,6 +201,7 @@ MCP servers are bootstrapped best-effort. If a prerequisite is missing, the help
 | **Context7** | Remote HTTP endpoint for library documentation lookups. Gives agents access to current docs for libraries and frameworks. Requires `CONTEXT7_API_KEY` environment variable. |
 | **GitHub** | Remote GitHub MCP endpoint for repository operations — issue search, PR management, code search, and file access. Uses host OAuth or `GITHUB_TOKEN` PAT. |
 | **KatLedger** | Local MCP server for the KAT session ledger database. Downloads the `KatLedger.exe` binary from GitHub releases and stores the DB at `%USERPROFILE%\.kat\KatLedger\KatLedger.db`. VS Code only. |
+| **Playwright** | Local Microsoft Playwright MCP server, launched through `npx`. Requires Node.js 18 or newer. |
 
 Each server is configured only for clients that canonical agent tool metadata actually requests. The current configuration (from `meta.jsonc`) is:
 
@@ -209,8 +210,9 @@ Each server is configured only for clients that canonical agent tool metadata ac
 | Context7 | ✅ | ✅ | ✅ | n/a |
 | GitHub | ✅ | ✅ | ✅ | n/a |
 | KatLedger | ✅ | — | — | n/a |
+| Playwright | ✅ | ✅ | ✅ | n/a |
 
-> MCP is out of scope for Codex. Codex configures servers in `config.toml`, while the three `install-*.ps1` helpers write JSON (`mcp.json`, `mcp-config.json`, `.claude.json`). Setting `codex: true` on a server in the shared `mcp` block reports `unsupported` with a footnote rather than attempting a bootstrap.
+> MCP is out of scope for Codex. Codex configures servers in `config.toml`, while the JSON-based `install-*.ps1` helpers write client configuration files (`mcp.json`, `mcp-config.json`, `.claude.json`). Setting `codex: true` on a server in the shared `mcp` block reports `unsupported` with a footnote rather than attempting a bootstrap.
 
 ## VS Code Settings Safeguards
 

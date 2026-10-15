@@ -95,6 +95,10 @@
 		},
 		"katledger": {
 			"copilot.vscode": true
+		},
+		"playwright": {
+			"copilot": true,
+			"claude": true
 		}
 	}
 }

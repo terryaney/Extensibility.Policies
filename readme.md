@@ -90,6 +90,7 @@ Most third-party skills install straight from upstream rather than being copied 
 | Context7 | Library and framework documentation lookups. Requires `CONTEXT7_API_KEY`. |
 | GitHub | Repository operations — issues, PRs, code search. Uses host OAuth or `GITHUB_TOKEN`. |
 | KatLedger | Session ledger database for tracking AI usage (VS Code only). |
+| Playwright | Browser automation through the Microsoft Playwright MCP server. Requires Node.js 18 or newer. |
 
 Note: MCP servers are bootstrapped best-effort — if a prerequisite is missing, the sync reports the gap and continues.
 

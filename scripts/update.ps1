@@ -2957,11 +2957,12 @@ function Write-BootstrapNoClientWarnings {
 function Add-CodexMcpUnsupportedRecords {
     param([object]$McpSettings)
 
-    # Codex configures MCP through config.toml; the three install-*.ps1 helpers are JSON-based.
+    # Codex configures MCP through config.toml; the install-*.ps1 helpers are JSON-based.
     foreach ($mcpServer in @(
             [pscustomobject]@{ Key = 'context7';  ProductName = 'Context7'  },
             [pscustomobject]@{ Key = 'github';    ProductName = 'GitHub'    },
-            [pscustomobject]@{ Key = 'katledger'; ProductName = 'KatLedger' })) {
+            [pscustomobject]@{ Key = 'katledger'; ProductName = 'KatLedger' },
+            [pscustomobject]@{ Key = 'playwright'; ProductName = 'Playwright' })) {
 
         $serverConfig = Get-Prop $McpSettings $mcpServer.Key
         if ($null -eq $serverConfig) { continue }
@@ -3114,6 +3115,12 @@ function Invoke-PolicySync {
         if (Test-McpParityRequested -ServerKey 'katledger') {
             Invoke-SyncPhase -Name 'Bootstrapping MCP: KatLedger' -Action {
                 Invoke-McpBootstrap -ProductName 'KatLedger' -HelperScript 'install-katledger.ps1' -McpConfig (Get-Prop $mcpSettings 'katledger')
+            }
+        }
+
+        if (Test-McpParityRequested -ServerKey 'playwright') {
+            Invoke-SyncPhase -Name 'Bootstrapping MCP: Playwright' -Action {
+                Invoke-McpBootstrap -ProductName 'Playwright' -HelperScript 'install-playwright.ps1' -McpConfig (Get-Prop $mcpSettings 'playwright')
             }
         }
     }
@@ -5485,7 +5492,5 @@ function Install-RenderedSkill {
 
 Invoke-PolicySync
 $global:LASTEXITCODE = 0
-
-
 
 
