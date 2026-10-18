@@ -37,11 +37,12 @@
 # Code Authoring
 
 ## Code Comments
-- Default to no comment. Add one only where a competent reader of the language would otherwise stop and wonder why — a constraint, a required ordering, a workaround, a non-obvious edge case, or why the obvious approach was not used.
-- Never restate what the code already says, narrate the edit you just made, or explain standard language/framework behavior.
-- Never reference plans, decision IDs, tickets, issue numbers, or review threads in code (no "per D1", "see plan X"). If the reason is worth recording, state the reason itself in plain language so nobody has to go look it up.
-- XML doc comments: the first `<summary>` paragraph is one sentence under 150 characters saying what the member does. Anything further goes in additional `<para>` elements inside the same summary, never in the first paragraph.
-- Omit `<param>`/`<returns>` when the name and type already say it; include them only when there is a constraint, unit, ownership, or null/empty behavior worth stating.
+Applies to C#, TypeScript, KAML and SCSS alike.
+- Comment only when deleting the comment would let a competent maintainer "fix" the code into a bug: a workaround for a platform or library defect, a required ordering, a threading or timing constraint, or code that looks wrong but is right. Anything else gets no comment.
+- At most two lines. State the condition and the consequence, not the history or the alternatives. If it needs more, the code should change or the reasoning belongs in the repo's architecture documentation.
+- Never write: what the code does or what a name already says; design narratives or "deliberately"/"on purpose" essays; history ("used to", "before the refactor", "was moved"); references to plans, decision IDs, tickets, reviews or checklist items; section banners (`// ----`); explanations of language, framework or library behavior a reader can look up.
+- XML doc comments only on records that are a bridge or event contract, and on members whose name and type do not say the unit, the null or empty meaning, or the ownership. One sentence each.
+- When unsure, delete. A missing comment costs a reader a minute; a wrong or stale one costs more.
 - Do not add or expand comments in code you were not already changing.
 
 ## Logging
