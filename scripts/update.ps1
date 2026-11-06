@@ -1315,6 +1315,7 @@ function Get-ExternalPrimitiveDefinitions {
             Scope = $scope.Trim().ToLowerInvariant()
             LegacyCommand = [string](Get-Prop $meta 'command')
             Amendments = Get-Prop $meta 'amendments'
+            AssetsPath = Join-Path (Join-Path $aiRoot 'external-assets') $property.Name
         })
     }
 
@@ -1459,16 +1460,46 @@ function Get-ExternalPrimitiveSourceCommit {
     return $commit
 }
 
+function Get-ExternalPrimitiveAssets {
+    param([object]$Definition)
+
+    if (-not (Test-Path -LiteralPath $Definition.AssetsPath)) { return }
+    if (-not (Test-Path -LiteralPath $Definition.AssetsPath -PathType Container)) {
+        throw "external primitive '$($Definition.Id)': asset source '$($Definition.AssetsPath)' must be a directory."
+    }
+
+    foreach ($file in @(Get-ChildItem -LiteralPath $Definition.AssetsPath -File -Recurse -Force -ErrorAction Stop | Sort-Object FullName)) {
+        [pscustomobject]@{
+            SourcePath = $file.FullName
+            RelativePath = $file.FullName.Substring($Definition.AssetsPath.Length).TrimStart('\')
+            Hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256 -ErrorAction Stop).Hash
+        }
+    }
+}
+
+function Copy-ExternalPrimitiveAssets {
+    param(
+        [object]$Definition,
+        [string]$InstallPath
+    )
+
+    foreach ($asset in @(Get-ExternalPrimitiveAssets -Definition $Definition)) {
+        $destination = Join-Path (Join-Path $InstallPath 'assets') $asset.RelativePath
+        New-Directory (Split-Path $destination -Parent)
+        Copy-Item -LiteralPath $asset.SourcePath -Destination $destination -Force -ErrorAction Stop
+    }
+}
+
 function Get-ExternalPrimitiveDefinitionHash {
     param([object]$Definition)
 
-    # Covers every field that changes what gets installed or how it is decorated, so editing the
-    # manifest invalidates the skip even when upstream has not moved.
+    # Local assets can change without an upstream commit, so include their content in the cache key.
     $payload = [ordered]@{
         source = [string]$Definition.Source
         skill = [string]$Definition.Skill
         scope = [string]$Definition.Scope
         meta = $Definition.Meta
+        assets = @(Get-ExternalPrimitiveAssets -Definition $Definition | Select-Object RelativePath, Hash)
     } | ConvertTo-Json -Depth 12 -Compress
 
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($payload)
@@ -1493,9 +1524,11 @@ function Test-ExternalPrimitiveCurrent {
     if ([string]::IsNullOrWhiteSpace($SourceCommit)) { return $false }
 
     $wantedClients = (@($InstallClients | Sort-Object) -join ',')
+    $assets = @(Get-ExternalPrimitiveAssets -Definition $Definition)
 
     foreach ($client in $InstallClients) {
-        $sidecarPath = Join-Path (Get-ExternalPrimitiveInstallPath -Client $client -Id $Definition.Id) $script:externalPrimitiveSidecarName
+        $installPath = Get-ExternalPrimitiveInstallPath -Client $client -Id $Definition.Id
+        $sidecarPath = Join-Path $installPath $script:externalPrimitiveSidecarName
         if (-not (Test-Path -LiteralPath $sidecarPath)) { return $false }
 
         try {
@@ -1510,6 +1543,12 @@ function Test-ExternalPrimitiveCurrent {
 
         $recordedClients = ConvertTo-StringArray (Get-Prop $sidecar 'clients')
         if ((@($recordedClients | Sort-Object) -join ',') -ne $wantedClients) { return $false }
+
+        foreach ($asset in $assets) {
+            $assetPath = Join-Path (Join-Path $installPath 'assets') $asset.RelativePath
+            if (-not (Test-Path -LiteralPath $assetPath -PathType Leaf)) { return $false }
+            if ((Get-FileHash -LiteralPath $assetPath -Algorithm SHA256 -ErrorAction Stop).Hash -ne $asset.Hash) { return $false }
+        }
     }
 
     return $true
@@ -2376,9 +2415,11 @@ function Complete-ExternalPrimitiveInstall {
             if ($installClients -contains 'codex') {
                 Set-ExternalPrimitiveOpenAiInvocation -InstallPath $stagedPath -Meta $Definition.Meta
             }
+
+            Copy-ExternalPrimitiveAssets -Definition $Definition -InstallPath $stagedPath
         }
         catch {
-            $failures[$stagedRoot] = "decoration failed: $($_.Exception.Message)"
+            $failures[$stagedRoot] = "decoration or asset deployment failed: $($_.Exception.Message)"
             continue
         }
 
@@ -5492,5 +5533,3 @@ function Install-RenderedSkill {
 
 Invoke-PolicySync
 $global:LASTEXITCODE = 0
-
-

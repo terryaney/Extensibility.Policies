@@ -16,6 +16,7 @@
 // skill's meta.jsonc: name, description, argument-hint, license, compatibility, context, and
 // skills.modelInvocable / skills.userInvocable. Decoration re-applies after every install, because
 // every sync re-pulls upstream HEAD and overwrites SKILL.md.
+// Optional KAT assets live in AI/external-assets/<key>/ and deploy into the skill's assets/ folder.
 {
 	// Upstream owns body and description outright; KAT contributes only the prefix and context.
 	"kat-frontend-design": {
@@ -108,7 +109,10 @@
 		"context": "fork",
 		"amendments": {
 			"all": [
-				"kat-visual-explainer: write generated HTML to `~/.agent/diagrams/` unless the user asks for another path. Open it in a browser only when the environment permits; if browser access is blocked, report the file path instead."
+				"kat-visual-explainer: unless the user gives a path, write the source and rendered HTML to `.vscode/Documentation/` at the repository root instead of `~/.agent/diagrams/`. If `.vscode` exists, create `Documentation` without asking; if `.vscode` or the repository does not exist, ask the user for a location and suggest `.vscode/Documentation/`.",
+				"kat-visual-explainer: when the user asks to refresh or regenerate an existing visual-explainer HTML page, use this skill even if not named. For `<name>.html`, use the sibling `<name>.src.html` if present; for `<name>.src.html`, use it directly. Apply the custom CSS rule, make any requested content updates, and render to the same `<name>.html` path, preserving content and functionality except for requested changes. If the source is missing, reconstruct it from the existing HTML when feasible; if it cannot be reconstructed without losing content or functionality, report the limitation and leave the existing HTML unchanged.",
+				"kat-visual-explainer: before generating or regenerating a page, check `<destination folder>/css/kat-ve.css`, where the destination folder is the resolved HTML output directory. If absent and `<this skill's directory>/assets/kat-ve.css` exists, create the destination's `css/` folder and copy that asset there; never overwrite existing destination CSS. If the destination CSS then exists, include exactly one `<link rel=\"stylesheet\" href=\"css/kat-ve.css\">` immediately after `<link rel=\"stylesheet\" href=\"kit.css\" data-ve-kit>` in the source HTML. Preserve this link during regeneration and in the rendered HTML; if neither CSS file exists, omit the custom link.",
+				"kat-visual-explainer: render with `node <this skill's directory>/kit/render.mjs`, not the MCP render tool, which only writes inside `~/.agent/diagrams/`. Open it in a browser only when the environment permits; if browser access is blocked, report the file path instead."
 			],
 			"copilot": [
 				"kat-visual-explainer: the files in this skill's `commands/` folder are not registered as separate skills here. When the user asks for a diagram, architecture overview, diff review, plan review, project recap, slide deck, or complex comparison table, read the skill's `SKILL.md` and follow its workflow, using the matching file in its `commands/` folder as the template."

@@ -77,6 +77,8 @@ None are currently published. The sync still supports agents in full — see [Pr
 
 Most third-party skills install straight from upstream rather than being copied into this repo, so their content stays current automatically. Where a skill needs local behaviour changes, those are declared as **amendments** alongside the install rather than by editing upstream's text — see [Primitives.md](.vscode/Documentation/Primitives.md#amendments).
 
+External skills can also bundle KAT-owned assets from `AI/external-assets/<id>/`; the sync copies them into the installed skill's `assets/` folder. For visual explainer custom CSS, see [KAT Assets for External Skills](.vscode/Documentation/Primitives.md#kat-assets-for-external-skills).
+
 ### Tools
 
 | Name | Description |

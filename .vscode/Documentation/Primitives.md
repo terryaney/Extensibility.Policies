@@ -60,6 +60,16 @@ When `enabled` is `false`, the updater removes the primitive from every root the
 
 > **Upstream has to still exist.** A byte-identical body is necessary but not sufficient — `skill` is resolved against upstream HEAD at install time. `kat-caveman` passed every content check and still failed, because Pocock had deleted it. There is no pre-flight check for this yet; verify with `npx skills add <source> --list` before deleting a vendored copy.
 
+### KAT Assets for External Skills
+
+Place optional KAT-owned assets in `AI/external-assets/<id>/`. The updater copies those files into each installed skill's `assets/` folder, preserving subfolders without replacing upstream's skill body. Asset paths and contents contribute to the install fingerprint; missing or changed deployed assets invalidate the up-to-date check. The Copilot mirror includes the same assets as the universal copy.
+
+For `kat-visual-explainer`, the sample stylesheet at `AI/external-assets/kat-visual-explainer/kat-ve.css` deploys as `<skill directory>/assets/kat-ve.css`. It colors page titles with the current theme's accent and can be customized before syncing.
+
+Before generation or regeneration, the skill uses the resolved HTML output directory (normally `.vscode/Documentation/`). If `css/kat-ve.css` is missing there and the bundled asset exists, it creates `css/` and copies the asset. Existing destination CSS is never overwritten; updating existing CSS is not part of this workflow. When destination CSS exists, the source HTML includes exactly one `<link rel="stylesheet" href="css/kat-ve.css">` immediately after the `kit.css` marker. Regeneration and rendering preserve the custom link; without either CSS file, no custom link is added.
+
+When asked to refresh a visual-explainer HTML page, the skill uses its sibling `.src.html` and renders back to the original `.html` path. If the source is missing, it reconstructs it from the existing page when possible; otherwise it reports the limitation without overwriting the page.
+
 ### Install Paths and the Universal Root
 
 `npx skills` classifies any agent whose project directory is `.agents/skills` as a **universal** agent and, for those, writes the shared `~/.agents/skills` at global scope — ignoring the per-agent global path in its own agent table. `github-copilot` and `codex` are both universal; `claude-code` is not. So one install command produces at most two directories, and KAT finishes the job:
@@ -107,7 +117,8 @@ Codex safety comes from scope: a *global* Codex instruction lands in `~/.codex/A
 1. **Renames** `<root>/<skill>` to `<root>/<id>`, so the `kat-` prefix survives. Skill directories are a flat namespace with no scoping — two upstreams both shipping `handoff` would collide and the last install would silently win — so the prefix is load-bearing, not cosmetic.
 2. **Patches frontmatter** with the same vocabulary a vendored skill's `meta.jsonc` uses: `name`, `description`, `argument-hint`, `license`, `compatibility`, `context`, and `skills.modelInvocable` / `skills.userInvocable`. The patch is line-surgical, so upstream's nested blocks (`metadata:`, lists) survive untouched. Codex-only directories get the reduced `name` + `description` form.
 3. **Patches `agents/openai.yaml`** for `allow_implicit_invocation` when the entry sets `skills.modelInvocable` and upstream ships that file — Codex has no frontmatter equivalent.
-4. **Writes `.kat-external.json`** recording source, upstream name, clients, and install time. `npx` leaves no provenance in the installed tree (`skills list` reads its source labels from the lockfile), so this is how a KAT-deployed install is identifiable. It deliberately is *not* the `CreatedBy=KAT` alternate data stream: that stream marks a file KAT may delete, and `Clear-ManagedRoot` would reap the install before it was ever used.
+4. **Copies optional KAT assets** from `AI/external-assets/<id>/` into the installed `assets/` folder before mirroring to Copilot.
+5. **Writes `.kat-external.json`** recording source, upstream name, clients, and install time. `npx` leaves no provenance in the installed tree (`skills list` reads its source labels from the lockfile), so this is how a KAT-deployed install is identifiable. It deliberately is *not* the `CreatedBy=KAT` alternate data stream: that stream marks a file KAT may delete, and `Clear-ManagedRoot` would reap the install before it was ever used.
 
 Decoration is a render step, not stored state — every sync re-runs the install command, which re-pulls upstream HEAD and overwrites `SKILL.md`, so the patch re-applies each time and cannot drift.
 
