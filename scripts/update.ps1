@@ -359,7 +359,7 @@ function Sync-VsCodeSettingsSafeguards {
         return
     }
 
-    $detail = "Missing or mismatched settings: $differenceSummary."
+    $differenceSummary = $differences -join ', '
 
     foreach ($property in @($desiredSettings.PSObject.Properties)) {
         if ($currentSettings -is [System.Collections.IDictionary]) {
